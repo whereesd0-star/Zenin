@@ -400,9 +400,11 @@ local WM_Fade = {}
 local function Fade(obj, prop, base)
 	table.insert(WM_Fade, {obj, prop, base})
 end
+local WM_Opacity = 1
 local function SetWatermarkOpacity(a)
+	WM_Opacity = a
 	for _, e in ipairs(WM_Fade) do
-		e[1][e[2]] = 1 - (1 - e[3]) * a
+		pcall(function() e[1][e[2]] = 1 - (1 - e[3]) * a end)
 	end
 end
 
@@ -418,7 +420,7 @@ local Watermark = Create("Frame", {
 	Parent = ScreenGui,
 })
 Fade(Watermark, "BackgroundTransparency", 0.1)
-Corner(Watermark, 13)
+local WM_Corner = Corner(Watermark, 13)
 local WM_Stroke = Stroke(Watermark, Color3.fromRGB(38, 38, 43), 1, 0.15)
 Fade(WM_Stroke, "Transparency", 0.15)
 MakeDraggable(Watermark, Watermark)
@@ -460,21 +462,145 @@ local function WMItem(names, tint, text)
 	return ic, lbl
 end
 
-local wmLogo, wmLogoParts = CreateZLogo(Watermark, 10)
-wmLogo.LayoutOrder = nx()
-for _, p in ipairs(wmLogoParts) do Fade(p, "BackgroundTransparency", 0) end
-WMSpacer(10.5)
-WMDivider()
-WMSpacer(3.7)
-local wmLabels = opts.Watermark or {"zenin", "zenin.cc", "internal"}
-local wmTagIcon = WMItem({"tag"}, Theme.Accent, wmLabels[1] or "zenin")
-BindAccent(function(c) wmTagIcon.ImageColor3 = c end)
-WMSpacer(13)
-WMItem({"globe"}, Color3.fromRGB(104, 122, 232), wmLabels[2] or "zenin.cc")
-WMSpacer(8.5)
-WMDivider()
-WMSpacer(3.5)
-local _, WM_DetailLabel = WMItem({"monitor"}, Color3.fromRGB(205, 205, 210), wmLabels[3] or "internal")
+local WM = {specs = {}, byId = {}, logoCfg = nil, header = nil, logo = nil}
+
+local function MakeLogo(parent, size, cfg, fade)
+	local holder = Create("Frame", {Size = UDim2.fromOffset(size, size), BackgroundTransparency = 1, Parent = parent})
+	local function track(obj, prop)
+		if fade ~= false then Fade(obj, prop, 0) end
+	end
+	if type(cfg) == "table" and cfg.Image ~= nil then
+		local img = Create("ImageLabel", {
+			Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1,
+			Image = type(cfg.Image) == "number" and ("rbxassetid://" .. cfg.Image) or tostring(cfg.Image),
+			ScaleType = Enum.ScaleType.Fit,
+			Parent = holder,
+		})
+		if cfg.Tint == "accent" then BindAccent(function(c) img.ImageColor3 = c end) end
+		track(img, "ImageTransparency")
+	elseif type(cfg) == "table" and cfg.Letter ~= nil then
+		local letter = Create("TextLabel", {
+			Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1,
+			Text = string.sub(tostring(cfg.Letter), 1, 2),
+			Font = Enum.Font.GothamBold,
+			TextSize = math.floor(size * (cfg.Scale or 1.15)),
+			TextColor3 = Theme.Accent,
+			Parent = holder,
+		})
+		BindAccent(function(c) letter.TextColor3 = c end)
+		track(letter, "TextTransparency")
+	else
+		local _, parts = CreateZLogo(holder, size)
+		for _, part in ipairs(parts) do track(part, "BackgroundTransparency") end
+	end
+	return holder
+end
+
+local function MakeIcon(parent, spec, size, tint)
+	if type(spec) == "table" then
+		return CreateIcon(parent, spec, size, UDim2.fromOffset(0, 0), tint)
+	end
+	return Create("ImageLabel", {
+		Size = UDim2.fromOffset(size, size),
+		BackgroundTransparency = 1,
+		Image = type(spec) == "number" and ("rbxassetid://" .. spec) or tostring(spec),
+		ImageColor3 = tint,
+		ScaleType = Enum.ScaleType.Fit,
+		Parent = parent,
+	})
+end
+
+local function ClearWatermark()
+	for _, child in ipairs(Watermark:GetChildren()) do
+		if not (child:IsA("UICorner") or child:IsA("UIStroke") or child:IsA("UIListLayout")) then
+			child:Destroy()
+		end
+	end
+	table.clear(WM_IconGroups)
+	table.clear(WM.byId)
+	for i = #WM_Fade, 1, -1 do
+		local ok, alive = pcall(function() return WM_Fade[i][1]:IsDescendantOf(ScreenGui) end)
+		if not ok or not alive then table.remove(WM_Fade, i) end
+	end
+end
+
+local function BuildWatermark(specs)
+	ClearWatermark()
+	WM.specs = specs
+	for _, spec in ipairs(specs) do
+		local kind = spec.Type or "Item"
+		if kind == "Logo" then
+			local logo = MakeLogo(Watermark, 10, WM.logoCfg, true)
+			logo.LayoutOrder = nx()
+			WM.logo = logo
+		elseif kind == "Spacer" then
+			WMSpacer(spec.Width or 8)
+		elseif kind == "Divider" then
+			WMDivider()
+		elseif kind == "Item" then
+			local accent = spec.Color == "accent"
+			local tint = typeof(spec.Color) == "Color3" and spec.Color or Theme.TextGray
+			local entry = {spec = spec}
+			if spec.Icon ~= nil and spec.Icon ~= false then
+				local grp = Create("Frame", {Size = UDim2.fromOffset(16, 12), BackgroundTransparency = 1, LayoutOrder = nx(), Parent = Watermark})
+				local ic = MakeIcon(grp, spec.Icon, 12, accent and Theme.Accent or tint)
+				Fade(ic, "ImageTransparency", 0)
+				if accent then BindAccent(function(c) ic.ImageColor3 = c end) end
+				table.insert(WM_IconGroups, grp)
+				entry.group, entry.icon = grp, ic
+			end
+			if spec.Text ~= nil then
+				local lbl = Label(Watermark, tostring(spec.Text), {AutoX = true, Size = UDim2.new(0, 0, 1, 0), Color = Theme.TextWhite})
+				lbl.LayoutOrder = nx()
+				Fade(lbl, "TextTransparency", 0)
+				entry.label = lbl
+			end
+			if spec.Id ~= nil then WM.byId[tostring(spec.Id)] = entry end
+		end
+	end
+	SetWatermarkOpacity(WM_Opacity)
+end
+
+local function NormalizeWatermark(list)
+	local specs = {}
+	for index, item in ipairs(list or {}) do
+		if type(item) == "string" then
+			specs[#specs + 1] = {Id = "text" .. index, Text = item}
+		elseif type(item) == "table" then
+			local copy = {}
+			for key, value in pairs(item) do copy[key] = value end
+			specs[#specs + 1] = copy
+		end
+	end
+	return specs
+end
+
+local function DefaultWatermark(labels)
+	labels = labels or {}
+	return {
+		{Type = "Logo"},
+		{Type = "Spacer", Width = 10.5},
+		{Type = "Divider"},
+		{Type = "Spacer", Width = 3.7},
+		{Id = "tag", Icon = {"tag"}, Color = "accent", Text = labels[1] or "zenin"},
+		{Type = "Spacer", Width = 13},
+		{Id = "globe", Icon = {"globe"}, Color = Color3.fromRGB(104, 122, 232), Text = labels[2] or "zenin.cc"},
+		{Type = "Spacer", Width = 8.5},
+		{Type = "Divider"},
+		{Type = "Spacer", Width = 3.5},
+		{Id = "detail", Icon = {"monitor"}, Color = Color3.fromRGB(205, 205, 210), Text = labels[3] or "internal"},
+	}
+end
+
+WM.logoCfg = opts.Logo
+local wmOpt = opts.Watermark
+if type(wmOpt) == "table" and type(wmOpt[1]) == "table" then
+	BuildWatermark(NormalizeWatermark(wmOpt))
+else
+	BuildWatermark(DefaultWatermark(type(wmOpt) == "table" and wmOpt or nil))
+end
 
 -- ============================================================================
 -- 5. ОКНО: HEADER / BODY / BOTTOM (480 x 338)
@@ -547,8 +673,9 @@ Create("Frame", {
 })
 MakeDraggable(Header, WindowHolder)
 
-local hLogo = CreateZLogo(Header, 10)
+local hLogo = MakeLogo(Header, 10, opts.Logo, false)
 hLogo.Position = UDim2.fromOffset(10, 13)
+WM.header = hLogo
 
 Label(Header, "Zenin Internal", {
 	Position = UDim2.fromOffset(26, 0),
@@ -943,6 +1070,17 @@ local function Dropdown(host, labelText, iconNames, defaultVal, options, callbac
 		if icon then icon.ImageColor3 = enabled and Theme.TextGray or Theme.TextDim end
 	end
 	function ctl.SetEnabled(b) enabled = b Apply() end
+	function ctl.Get() return current end
+	function ctl.Set(v, silent)
+		for _, o in ipairs(options) do
+			if o == v then
+				current = v
+				valLbl.Text = v
+				if not silent and callback then callback(v) end
+				return
+			end
+		end
+	end
 
 	btn.MouseButton1Click:Connect(function()
 		if not enabled then return end
@@ -983,6 +1121,7 @@ local function Dropdown(host, labelText, iconNames, defaultVal, options, callbac
 			})
 			Create("UIPadding", {PaddingLeft = UDim.new(0, 7), Parent = ob})
 			ob.MouseButton1Click:Connect(function()
+				current = opt
 				current = opt
 				valLbl.Text = opt
 				if callback then callback(opt) end
@@ -1039,6 +1178,11 @@ local function Toggle(host, labelText, default, callback, opts)
 
 	function ctl.SetEnabled(b) enabled = b Apply(false) end
 	function ctl.Get() return state end
+	function ctl.Set(v, silent)
+		state = v and true or false
+		Apply(true)
+		if not silent and callback then callback(state) end
+	end
 	sw.MouseButton1Click:Connect(function()
 		if not enabled then return end
 		state = not state
@@ -1052,6 +1196,7 @@ local function Slider(host, labelText, minV, maxV, defV, fmt, callback, opts)
 	opts = opts or {}
 	local extraTop = opts.extraTop or 0
 	local step = opts.step or 1
+	local current = defV
 	local y = Place(host, 28 + extraTop, opts.gap)
 	local box = Create("Frame", {Size = UDim2.new(1, 0, 0, 28 + extraTop), Position = UDim2.fromOffset(0, y), BackgroundTransparency = 1, Parent = host.frame})
 	local lbl = Label(box, labelText, {Position = UDim2.fromOffset(0, extraTop), Size = UDim2.new(0.65, 0, 0, 15)})
@@ -1103,6 +1248,14 @@ local function Slider(host, labelText, minV, maxV, defV, fmt, callback, opts)
 	end
 	BindAccent(function(c) fill.BackgroundColor3 = c Apply() end)
 	function ctl.SetEnabled(b) enabled = b Apply() end
+	function ctl.Get() return current end
+	function ctl.Set(v, silent)
+		local val = math.clamp(math.floor(v / step + 0.5) * step, minV, maxV)
+		current = val
+		Layout((val - minV) / (maxV - minV))
+		valLbl.Text = fmt(val)
+		if not silent and callback then callback(val) end
+	end
 
 	local dragging = false
 	local function Update(input)
@@ -1112,6 +1265,7 @@ local function Slider(host, labelText, minV, maxV, defV, fmt, callback, opts)
 		local p = math.clamp((input.Position.X - left) / width, 0, 1)
 		local val = math.floor((minV + (maxV - minV) * p) / step + 0.5) * step
 		val = math.clamp(val, minV, maxV)
+		current = val
 		Layout((val - minV) / (maxV - minV))
 		valLbl.Text = fmt(val)
 		if callback then callback(val) end
@@ -1589,6 +1743,37 @@ function HostMT:Box(height, startY, gap)
 	return WrapHost(AddBox(self.raw, height, startY, gap))
 end
 
+local function Button(host, labelText, callback, opts)
+	opts = opts or {}
+	local y = Place(host, 25, opts.gap)
+	local btn = Create("TextButton", {
+		Size = UDim2.new(1, 0, 0, 25),
+		Position = UDim2.fromOffset(0, y),
+		BackgroundColor3 = Theme.DropdownBg,
+		BorderSizePixel = 0,
+		Text = "",
+		AutoButtonColor = false,
+		Parent = host.frame,
+	})
+	Corner(btn, 5)
+	Stroke(btn, Theme.DropdownBorder, 1)
+	Label(btn, labelText, {Color = Theme.TextWhite, Align = Enum.TextXAlignment.Center})
+	local ctl = {}
+	local enabled = true
+	function ctl.SetEnabled(b)
+		enabled = b
+		btn.Active = b
+	end
+	btn.MouseButton1Click:Connect(function()
+		if enabled and callback then callback() end
+	end)
+	return ctl
+end
+
+function HostMT:Button(label, callback, opts)
+	return Button(self.raw, label, callback, opts)
+end
+
 function HostMT:Place(height, gap)
 	return Place(self.raw, height, gap)
 end
@@ -1707,6 +1892,58 @@ function Win:SetWatermarkDetail(mode)
 	DetailMode = mode
 end
 
+function Win:SetLogo(cfg)
+	WM.logoCfg = cfg
+	BuildWatermark(WM.specs)
+	local pos = WM.header and WM.header.Position
+	if WM.header then WM.header:Destroy() end
+	WM.header = MakeLogo(Header, 10, cfg, false)
+	if pos then WM.header.Position = pos end
+	return self
+end
+
+function Win:SetWatermarkItems(list)
+	BuildWatermark(NormalizeWatermark(list))
+	return self
+end
+
+function Win:GetWatermarkItems()
+	local copy = {}
+	for index, spec in ipairs(WM.specs) do copy[index] = spec end
+	return copy
+end
+
+function Win:SetWatermarkItem(id, changes)
+	for _, spec in ipairs(WM.specs) do
+		if spec.Id ~= nil and tostring(spec.Id) == tostring(id) then
+			for key, value in pairs(changes or {}) do spec[key] = value end
+			BuildWatermark(WM.specs)
+			return true
+		end
+	end
+	return false
+end
+
+function Win:SetWatermarkText(id, text)
+	return self:SetWatermarkItem(id, {Text = text})
+end
+
+function Win:SetWatermarkVisible(state)
+	Watermark.Visible = state == true
+end
+
+function Win:SetWatermarkPosition(x, y)
+	Watermark.Position = UDim2.fromOffset(x, y)
+end
+
+function Win:SetWatermarkStyle(style)
+	style = style or {}
+	if style.Background ~= nil then Watermark.BackgroundColor3 = style.Background end
+	if style.Stroke ~= nil then WM_Stroke.Color = style.Stroke end
+	if style.Radius ~= nil then WM_Corner.CornerRadius = UDim.new(0, style.Radius) end
+	return self
+end
+
 function Win:SetScrollbarWidth(width)
 	BarW = math.clamp(math.floor(width + 0.5), 1, 14)
 	UpdateAllBars()
@@ -1754,7 +1991,8 @@ task.spawn(function()
 		elseif DetailMode == "Version" then
 			txt = "v2.4"
 		end
-		WM_DetailLabel.Text = txt
+		local detail = WM.byId.detail
+		if detail and detail.label then detail.label.Text = txt end
 		task.wait(0.25)
 	end
 end)
