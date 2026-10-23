@@ -20,7 +20,7 @@ local Window = Library:CreateWindow({
     Title = "My Hub",
     Logo = "M",                     -- см. «Логотип»
     ToggleKey = Enum.KeyCode.RightShift,
-    Theme = "Dark",                 -- Dark | Light | Midnight | своя
+    Theme = "Dark",                 -- Dark | Light | своя
     Accent = Color3.fromRGB(255, 89, 89),
     AccentAlpha = 1,
     Scale = 1,                      -- масштаб окна
@@ -34,6 +34,7 @@ local Window = Library:CreateWindow({
         Detail = "internal", DetailIcon = "monitor",
         Version = "v1.0",
         Mode = "Product Type",      -- Time | FPS | Ping | Version | Product Type
+        ToggleOnClick = true,       -- клик по ватермарку открывает/закрывает меню
     },
 })
 ```
@@ -67,7 +68,7 @@ local Window = Library:CreateWindow({
 | `SetScale(n, animate)`, `GetScale()` | размер меню |
 | `SetScrollbarSize(px)`, `SetMouseWheel(bool)` | прокрутка |
 | `Show()`, `Hide()`, `Toggle()`, `SetVisible(b)`, `IsVisible()` | видимость |
-| `SetToggleKey(KeyCode)`, `GetToggleKey()`, `SetPosition(UDim2)` | |
+| `SetToggleKey(KeyCode)`, `GetToggleKey()`, `SetPosition(UDim2)`, `Center()` | клавиша, позиция, вернуть в центр |
 | `AddHeaderButton({Icon, Callback})` | иконка-кнопка в шапке слева от шестерёнки (`:SetIcon`, `:SetCallback`, `:Destroy`) |
 | `Notify({Title, Content, Icon, Duration})` | уведомление справа снизу |
 | `SaveConfig(name)`, `LoadConfig(name)`, `DeleteConfig(name)`, `ListConfigs()` | конфиги (все элементы с `Flag` + акцент + настройки) |
@@ -156,7 +157,11 @@ local b = Section:AddButton({
 
 ## Ватермарк
 
-`Window.Watermark`: `SetVisible`, `Toggle`, `SetTitle`, `SetSite` (пустая строка скрывает пункт), `SetDetail` (текст для режима Product Type), `SetVersion`, `SetMode`, `GetMode`, `SetOpacity(0..1)`, `SetIconsVisible`, `SetIcons({Title, Site, Detail})`, `SetPosition`, `SetProvider(function(mode) return "text" end)` для своего текста.
+`Window.Watermark`: `SetVisible`, `Toggle`, `SetTitle`, `SetSite` (пустая строка скрывает пункт), `SetDetail` (текст для режима Product Type), `SetVersion`, `SetMode`, `GetMode`, `SetOpacity(0..1)`, `SetIconsVisible`, `SetIcons({Title, Site, Detail})`, `SetPosition`, `SetToggleOnClick(bool)`, `SetProvider(function(mode) return "text" end)` для своего текста.
+
+Клик по ватермарку открывает и закрывает меню (это основная кнопка). Перетаскивание ватермарка клик не засчитывает.
+
+Окно и ватермарк перетаскиваются без ограничений по краям экрана; меню масштабируется от центра.
 
 ## Темы
 
