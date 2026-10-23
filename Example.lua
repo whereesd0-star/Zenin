@@ -5,6 +5,7 @@ local Window = Library:CreateWindow({
 	Title = "Zenin Internal",
 	Logo = "Z", -- буква/текст; или "zap" (Lucide-иконка); или "rbxassetid://123" (картинка)
 	ToggleKey = Enum.KeyCode.RightShift,
+	Configs = true, -- кнопка конфигов слева от шестерёнки
 	Accent = Color3.fromRGB(255, 89, 89),
 	Watermark = {
 		Title = "zenin",

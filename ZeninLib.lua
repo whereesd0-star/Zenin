@@ -83,7 +83,7 @@ Library.Themes.Dark = {
 	PopupBg = rgb(14, 14, 14), PopupHover = rgb(22, 22, 22),
 	SliderTrack = rgb(22, 22, 22), KnobFill = rgb(14, 14, 14), KnobStroke = rgb(246, 246, 249), KnobStrokeOff = rgb(150, 150, 156),
 	ToggleOffBg = rgb(22, 22, 22), ToggleOffDot = rgb(44, 44, 44),
-	ToggleOffBgOff = rgb(19, 19, 19), ToggleOffDotOff = rgb(32, 32, 32), ToggleOnDot = rgb(255, 255, 255), ToggleOnDotDark = rgb(20, 20, 22),
+	ToggleOffBgOff = rgb(19, 19, 19), ToggleOffDotOff = rgb(32, 32, 32), ToggleOnDot = rgb(255, 255, 255),
 	Text = rgb(255, 255, 255), TextGray = rgb(160, 160, 168), TextDim = rgb(88, 88, 96),
 	ValueOff = rgb(110, 110, 110), NavGray = rgb(180, 180, 188), Divider = rgb(34, 34, 38),
 	ScrollTrack = rgb(18, 18, 18), ScrollThumb = rgb(22, 22, 22), ScrollHover = rgb(30, 30, 30), ScrollDrag = rgb(40, 40, 40),
@@ -109,18 +109,18 @@ end
 Method(Library, "AddTheme", AddTheme)
 
 AddTheme("Light", {
-	WindowBg = rgb(240, 240, 243), BarBg = rgb(232, 232, 236), BarLine = rgb(220, 220, 226),
-	CardBg = rgb(250, 250, 252), BoxBg = rgb(243, 243, 246), BoxBorder = rgb(226, 226, 232),
-	TileBg = rgb(222, 222, 228), TileHover = rgb(212, 212, 220),
-	DropdownBg = rgb(243, 243, 246), DropdownBorder = rgb(214, 214, 222), DropdownBorderOff = rgb(232, 232, 236),
-	PopupBg = rgb(250, 250, 252), PopupHover = rgb(236, 236, 240),
-	SliderTrack = rgb(222, 222, 228), KnobFill = rgb(255, 255, 255), KnobStroke = rgb(40, 40, 46), KnobStrokeOff = rgb(170, 170, 178),
-	ToggleOffBg = rgb(222, 222, 228), ToggleOffDot = rgb(178, 178, 186),
-	ToggleOffBgOff = rgb(234, 234, 238), ToggleOffDotOff = rgb(206, 206, 212),
-	Text = rgb(20, 20, 24), TextGray = rgb(84, 84, 94), TextDim = rgb(160, 160, 170),
-	ValueOff = rgb(150, 150, 158), NavGray = rgb(96, 96, 106), Divider = rgb(214, 214, 222),
-	ScrollTrack = rgb(230, 230, 234), ScrollThumb = rgb(210, 210, 216), ScrollHover = rgb(196, 196, 204), ScrollDrag = rgb(180, 180, 190),
-	WmBg = rgb(248, 248, 250), WmStroke = rgb(214, 214, 222), WmDivider = rgb(214, 214, 222), WmText = rgb(20, 20, 24),
+	WindowBg = rgb(240, 240, 242), BarBg = rgb(255, 255, 255), BarLine = rgb(228, 228, 232),
+	CardBg = rgb(231, 231, 233), BoxBg = rgb(224, 224, 226), BoxBorder = rgb(210, 210, 214),
+	TileBg = rgb(240, 240, 242), TileHover = rgb(222, 222, 226),
+	DropdownBg = rgb(217, 217, 219), DropdownBorder = rgb(191, 191, 193), DropdownBorderOff = rgb(212, 212, 216),
+	PopupBg = rgb(240, 240, 242), PopupHover = rgb(226, 226, 230),
+	SliderTrack = rgb(217, 217, 219), KnobFill = rgb(255, 255, 255), KnobStroke = rgb(20, 20, 24), KnobStrokeOff = rgb(160, 160, 168),
+	ToggleOffBg = rgb(217, 217, 219), ToggleOffDot = rgb(174, 174, 176),
+	ToggleOffBgOff = rgb(226, 226, 228), ToggleOffDotOff = rgb(200, 200, 204), ToggleOnDot = rgb(21, 19, 24),
+	Text = rgb(20, 20, 24), TextGray = rgb(70, 70, 78), TextDim = rgb(150, 150, 158),
+	ValueOff = rgb(150, 150, 158), NavGray = rgb(110, 110, 118), Divider = rgb(221, 220, 225),
+	ScrollTrack = rgb(228, 228, 230), ScrollThumb = rgb(214, 214, 216), ScrollHover = rgb(200, 200, 204), ScrollDrag = rgb(186, 186, 190),
+	WmBg = rgb(242, 242, 242), WmStroke = rgb(197, 198, 202), WmDivider = rgb(214, 214, 218), WmText = rgb(20, 20, 24),
 	WmDetailIcon = rgb(90, 90, 100),
 })
 
@@ -320,9 +320,6 @@ end
 local function IsClickOrTouch(i)
 	return i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch
 end
-local function IsMove(i)
-	return i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch
-end
 
 local function Tween(obj, info, props)
 	local t = TweenService:Create(obj, info, props)
@@ -351,15 +348,6 @@ local function FormatNumber(v, decimals)
 	return tostring(math.floor(v + 0.5))
 end
 
-local function Luma(c)
-	return 0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B
-end
-
--- Акцент слишком близок к фону (например белый акцент на светлом фоне).
-local function LowContrast(a, b, limit)
-	return math.abs(Luma(a) - Luma(b)) < (limit or 0.12)
-end
-
 local function ToHex(c)
 	return string.format("%02X%02X%02X", math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
 end
@@ -372,12 +360,11 @@ local function FromHex(hex)
 	return Color3.fromRGB(r, g, b)
 end
 
--- Перетаскивание: порог 4px (клик не двигает), окно идёт за курсором без задержки,
+-- Перетаскивание через общий диспетчер окна: порог 4px (клик не двигает), без задержки,
 -- без ограничений по краям экрана. opts.OnClick вызывается на клик без перетаскивания.
 local function MakeDraggable(W, handle, target, opts)
 	opts = opts or {}
 	local THRESH = 4
-	local drag = nil -- {input, startMouse, startPos, started}
 
 	local function OverButton(pos)
 		for _, d in ipairs(handle:GetDescendants()) do
@@ -392,36 +379,20 @@ local function MakeDraggable(W, handle, target, opts)
 	end
 
 	W.Connect(handle.InputBegan, function(input)
-		if not IsClickOrTouch(input) or drag then return end
-		local pos = Vector2.new(input.Position.X, input.Position.Y)
-		if OverButton(pos) then return end
-		drag = {input = input, startMouse = pos, startPos = target.Position, started = false}
-	end)
-
-	W.Connect(UserInputService.InputChanged, function(input)
-		if not drag then return end
-		if drag.input.UserInputType == Enum.UserInputType.Touch then
-			if input ~= drag.input then return end
-		elseif input.UserInputType ~= Enum.UserInputType.MouseMovement then
-			return
-		end
-		local delta = Vector2.new(input.Position.X, input.Position.Y) - drag.startMouse
-		if not drag.started then
-			if delta.Magnitude < THRESH then return end
-			drag.started = true
-		end
-		local p = drag.startPos
-		target.Position = UDim2.new(p.X.Scale, p.X.Offset + delta.X, p.Y.Scale, p.Y.Offset + delta.Y)
-	end)
-
-	W.Connect(UserInputService.InputEnded, function(input)
-		local d = drag
-		if not d then return end
-		local isTouch = d.input.UserInputType == Enum.UserInputType.Touch
-		local same = isTouch and (input == d.input) or ((not isTouch) and input.UserInputType == d.input.UserInputType)
-		if not same then return end
-		drag = nil
-		if not d.started and opts.OnClick then SafeCall(opts.OnClick) end
+		if not IsClickOrTouch(input) or W.Drag then return end
+		local origin = Vector2.new(input.Position.X, input.Position.Y)
+		if OverButton(origin) then return end
+		local startPos, started = target.Position, false
+		W.BeginDrag(input, function(inp)
+			local delta = Vector2.new(inp.Position.X, inp.Position.Y) - origin
+			if not started then
+				if delta.Magnitude < THRESH then return end
+				started = true
+			end
+			target.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end, function(_, cancelled)
+			if not started and not cancelled and opts.OnClick then opts.OnClick() end
+		end)
 	end)
 end
 
@@ -502,7 +473,7 @@ local function CreateLogo(W, parent, spec, size, textSize)
 	if spec.Color and target then
 		target[prop] = spec.Color
 	elseif target then
-		W.Bind(function() target[prop] = W.AccentOn("BarBg") end, target)
+		W.Bind(function(_, accent) target[prop] = accent end, target)
 	end
 	return box, fades
 end
@@ -576,6 +547,7 @@ local function NewElement(W, S, kind, o, height)
 		local i = IndexOf(W.Elements, el)
 		if i then table.remove(W.Elements, i) end
 		row:Destroy()
+		W.Prune()
 	end)
 
 	if el.Flag then Library.Options[el.Flag] = el end
@@ -637,16 +609,13 @@ local function OpenList(W, owner, btn, options, isSelected, onPick, multi)
 	Create("UIListLayout", {SortOrder = Enum.SortOrder.LayoutOrder, Parent = list})
 
 	local items = {}
-	local weak = LowContrast(W.Accent, T.Text, 0.15)
 	local function Paint(it)
 		local sel = isSelected(it.opt)
-		it.mark = sel and weak
-		it.btn.BackgroundTransparency = (it.mark or it.hover) and 0 or 1
-		it.btn.TextColor3 = sel and W.AccentOn("PopupBg") or T.Text
+		it.btn.TextColor3 = sel and W.Accent or T.Text
 		ApplyFont(it.btn, sel and "SemiBold" or "Medium")
 		if it.check then
 			it.check.Visible = sel
-			it.check.ImageColor3 = W.AccentOn("PopupBg")
+			it.check.ImageColor3 = W.Accent
 		end
 	end
 
@@ -675,8 +644,8 @@ local function OpenList(W, owner, btn, options, isSelected, onPick, multi)
 		end
 		table.insert(items, it)
 		Paint(it)
-		ob.MouseEnter:Connect(function() it.hover = true ob.BackgroundTransparency = 0 end)
-		ob.MouseLeave:Connect(function() it.hover = false ob.BackgroundTransparency = it.mark and 0 or 1 end)
+		ob.MouseEnter:Connect(function() ob.BackgroundTransparency = 0 end)
+		ob.MouseLeave:Connect(function() ob.BackgroundTransparency = 1 end)
 		ob.MouseButton1Click:Connect(function()
 			onPick(opt)
 			if multi then
@@ -713,22 +682,15 @@ local function AddToggle(W, S, o)
 		Parent = row,
 	})
 	Corner(sw, 7)
-	local swStroke = Stroke(sw, WHITE, 1, 1)
 	local dot = Create("Frame", {Size = UDim2.fromOffset(8, 8), BorderSizePixel = 0, ZIndex = 2, Parent = sw})
 	Corner(dot, 4)
 
 	function el._apply(animate)
 		local T, enabled = W.Theme, el.Enabled
 		local bg, bgT, dotC, dotPos
-		local strokeT = 1
 		if state then
-			local a = W.AccentAlpha * (enabled and 1 or 0.45)
-			bg, bgT = W.Accent, 1 - a
-			-- реальный цвет плашки с учётом альфы: светлая плашка -> тёмная точка
-			local seen = T.CardBg:Lerp(W.Accent, a)
-			dotC = Luma(seen) > 0.6 and T.ToggleOnDotDark or T.ToggleOnDot
-			dotPos = UDim2.new(1, -11, 0.5, -4)
-			if LowContrast(seen, T.CardBg) then strokeT = 0 end
+			bg, bgT = W.Accent, 1 - W.AccentAlpha * (enabled and 1 or 0.45)
+			dotC, dotPos = T.ToggleOnDot, UDim2.new(1, -11, 0.5, -4)
 		else
 			bg = enabled and T.ToggleOffBg or T.ToggleOffBgOff
 			bgT = 0
@@ -737,8 +699,6 @@ local function AddToggle(W, S, o)
 		end
 		lbl.TextColor3 = (not enabled) and T.TextDim or (state and T.Text or T.TextGray)
 		ApplyFont(lbl, state and "SemiBold" or "Medium")
-		swStroke.Color = T.DropdownBorder
-		swStroke.Transparency = strokeT
 		if animate then
 			local ti = TweenInfo.new(0.14, Enum.EasingStyle.Quad)
 			Tween(dot, ti, {Position = dotPos, BackgroundColor3 = dotC})
@@ -819,7 +779,6 @@ local function AddSlider(W, S, o)
 	local R = 5.5
 	local fill = Create("Frame", {BorderSizePixel = 0, Parent = track})
 	Corner(fill, 2)
-	local fillStroke = Stroke(fill, WHITE, 1, 1)
 	local knob = Create("Frame", {Size = UDim2.fromOffset(7, 7), BorderSizePixel = 0, ZIndex = 3, Parent = track})
 	Corner(knob, 4)
 	local ks = Stroke(knob, WHITE, 2)
@@ -845,10 +804,7 @@ local function AddSlider(W, S, o)
 		valLbl.TextColor3 = enabled and T.TextGray or T.TextDim
 		track.BackgroundColor3 = T.SliderTrack
 		fill.BackgroundColor3 = W.Accent
-		local a = W.AccentAlpha * (enabled and 1 or 0.45)
-		fill.BackgroundTransparency = 1 - a
-		fillStroke.Color = T.TextDim
-		fillStroke.Transparency = LowContrast(T.SliderTrack:Lerp(W.Accent, a), T.SliderTrack) and 0.3 or 1
+		fill.BackgroundTransparency = 1 - W.AccentAlpha * (enabled and 1 or 0.45)
 		knob.BackgroundColor3 = T.KnobFill
 		ks.Color = enabled and T.KnobStroke or T.KnobStrokeOff
 	end
@@ -880,7 +836,6 @@ local function AddSlider(W, S, o)
 	Method(el, "SetSuffix", function(s) o.Suffix = s Layout() end)
 	Method(el, "SetFormat", function(fn) o.Format = fn Layout() end)
 
-	local dragging = false
 	local function Update(input)
 		local sc = W.Scale.Scale
 		local left = track.AbsolutePosition.X + R * sc
@@ -890,16 +845,9 @@ local function AddSlider(W, S, o)
 		SetValue(minV + (maxV - minV) * p)
 	end
 	hit.InputBegan:Connect(function(input)
-		if el.Enabled and IsClickOrTouch(input) then
-			dragging = true
+		if el.Enabled and IsClickOrTouch(input) and W.BeginDrag(input, Update) then
 			Update(input)
 		end
-	end)
-	W.Connect(UserInputService.InputChanged, function(input)
-		if dragging and IsMove(input) then Update(input) end
-	end)
-	W.Connect(UserInputService.InputEnded, function(input)
-		if dragging and IsClickOrTouch(input) then dragging = false end
 	end)
 	return Finish(el, o)
 end
@@ -1160,7 +1108,7 @@ local function AddButton(W, S, o)
 		box.BackgroundColor3 = T.DropdownBg
 		boxStroke.Color = enabled and T.DropdownBorder or T.DropdownBorderOff
 		tile.BackgroundColor3 = T.CardBg:Lerp(o.IconColor or W.Accent, 0.22 * a)
-		icon.ImageColor3 = o.IconColor or W.AccentOn("DropdownBg")
+		icon.ImageColor3 = o.IconColor or W.Accent
 		icon.ImageTransparency = 1 - a
 		titleLbl.TextColor3 = enabled and T.TextGray or T.TextDim
 		descLbl.TextColor3 = T.TextDim
@@ -1389,7 +1337,7 @@ local function AccentPicker(W, S, labelText)
 		end
 		local function Begin(m)
 			return function(i)
-				if IsClickOrTouch(i) then
+				if IsClickOrTouch(i) and W.BeginDrag(i, Process, function() mode = nil end, "popup") then
 					mode = m
 					Process(i)
 				end
@@ -1398,12 +1346,6 @@ local function AccentPicker(W, S, labelText)
 		svHit.InputBegan:Connect(Begin("SV"))
 		hueHit.InputBegan:Connect(Begin("H"))
 		alphaHit.InputBegan:Connect(Begin("A"))
-		table.insert(W.PopupConns, UserInputService.InputChanged:Connect(function(i)
-			if mode and IsMove(i) then Process(i) end
-		end))
-		table.insert(W.PopupConns, UserInputService.InputEnded:Connect(function(i)
-			if IsClickOrTouch(i) then mode = nil end
-		end))
 		W.ActivePopup = modal
 		W.PopupOwner = el
 	end)
@@ -1476,6 +1418,11 @@ local function NewSection(W, page, o)
 		S[k] = S["Add" .. k]
 		S["Create" .. k] = S["Add" .. k]
 	end
+	-- служебный ряд произвольной высоты (встроенные страницы)
+	function S._raw(h)
+		S.Order = S.Order + 1
+		return Create("Frame", {Size = UDim2.new(1, 0, 0, h), BackgroundTransparency = 1, LayoutOrder = S.Order, Parent = content})
+	end
 	Method(S, "SetTitle", function(t) if titleLbl then titleLbl.Text = tostring(t) end end)
 	S.SetName = S.SetTitle
 	Method(S, "SetVisible", function(b) card.Visible = b ~= false end)
@@ -1485,11 +1432,12 @@ local function NewSection(W, page, o)
 			if el.Row:IsDescendantOf(card) then el.Destroy() end
 		end
 		card:Destroy()
+		W.Prune()
 	end)
 	return S
 end
 
-local function NewPage(W)
+local function NewPage(W, full)
 	local scroll = Create("ScrollingFrame", {
 		Size = UDim2.fromOffset(WIN_W, BODY_H),
 		Position = UDim2.fromOffset(0, HEADER_H),
@@ -1516,6 +1464,7 @@ local function NewPage(W)
 
 	local page = {scroll = scroll, canvas = 0}
 	local dragging, hovering, grabOff = false, false, 0
+	local goal, step = 0, nil
 
 	local function ThumbColor(instant)
 		local T = W.Theme
@@ -1527,6 +1476,10 @@ local function NewPage(W)
 		end
 	end
 	W.Bind(function() ThumbColor(true) end, thumb)
+
+	local function MaxScroll()
+		return math.max(0, page.canvas - BODY_H)
+	end
 
 	function page.Update()
 		local maxS = page.canvas - BODY_H
@@ -1543,58 +1496,77 @@ local function NewPage(W)
 		thumb.Size = UDim2.new(1, 0, 0, th)
 		thumb.Position = UDim2.fromOffset(0, frac * (TRK_LEN - th))
 	end
+
+	function page.StopScroll()
+		if step then
+			step:Disconnect()
+			step = nil
+		end
+	end
+	-- Плавная прокрутка: экспоненциальное сглаживание к цели.
+	-- RenderStepped подключён только пока контент едет, затем отключается.
+	function page.ScrollTo(y, instant)
+		goal = math.clamp(tonumber(y) or 0, 0, MaxScroll())
+		if instant then
+			page.StopScroll()
+			scroll.CanvasPosition = Vector2.new(0, goal)
+			return
+		end
+		if step then return end
+		step = RunService.RenderStepped:Connect(function(dt)
+			local cur = scroll.CanvasPosition.Y
+			local nxt = cur + (goal - cur) * (1 - math.exp(-dt * 18))
+			if math.abs(goal - nxt) < 0.5 then nxt = goal end
+			scroll.CanvasPosition = Vector2.new(0, nxt)
+			if nxt == goal then page.StopScroll() end
+		end)
+	end
+
 	function page.SetCanvas(h)
 		page.canvas = h
 		scroll.CanvasSize = UDim2.fromOffset(0, h)
+		goal = math.clamp(goal, 0, MaxScroll())
 		page.Update()
 	end
 	function page.Show(b)
 		scroll.Visible = b
+		if not b then page.StopScroll() end
 		page.Update()
 	end
 
 	local function SetFromMouse(mouseY)
-		local maxS = page.canvas - BODY_H
+		local maxS = MaxScroll()
 		if maxS <= 1 then return end
 		local sc = W.Scale.Scale
 		local th = thumb.AbsoluteSize.Y / sc
 		local travel = TRK_LEN - th
 		if travel <= 0 then return end
 		local top = (mouseY - hit.AbsolutePosition.Y) / sc - grabOff
-		scroll.CanvasPosition = Vector2.new(0, math.clamp(top / travel, 0, 1) * maxS)
-		page.Update()
+		page.ScrollTo(math.clamp(top / travel, 0, 1) * maxS)
 	end
 
 	hit.InputBegan:Connect(function(input)
-		if not IsClickOrTouch(input) then return end
+		if not IsClickOrTouch(input) or W.Drag then return end
 		local sc = W.Scale.Scale
 		local ty, th = thumb.AbsolutePosition.Y, thumb.AbsoluteSize.Y
 		if input.Position.Y >= ty and input.Position.Y <= ty + th then
 			dragging = true
 			grabOff = (input.Position.Y - ty) / sc
 			ThumbColor()
-			SetFromMouse(input.Position.Y)
-		else
-			local maxS = page.canvas - BODY_H
-			if maxS > 1 then
-				local dir = (input.Position.Y < ty) and -1 or 1
-				local target = math.clamp(scroll.CanvasPosition.Y + dir * BODY_H * 0.9, 0, maxS)
-				Tween(scroll, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {CanvasPosition = Vector2.new(0, target)})
-			end
+			W.BeginDrag(input, function(i) SetFromMouse(i.Position.Y) end, function()
+				dragging = false
+				ThumbColor()
+			end)
+		elseif MaxScroll() > 1 then
+			-- клик по дорожке: страница в сторону клика
+			local dir = (input.Position.Y < ty) and -1 or 1
+			local from = step and goal or scroll.CanvasPosition.Y
+			page.ScrollTo(from + dir * BODY_H * 0.9)
 		end
 	end)
 	scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(page.Update)
 	hit.MouseEnter:Connect(function() hovering = true ThumbColor() end)
 	hit.MouseLeave:Connect(function() hovering = false ThumbColor() end)
-	W.Connect(UserInputService.InputChanged, function(input)
-		if dragging and IsMove(input) then SetFromMouse(input.Position.Y) end
-	end)
-	W.Connect(UserInputService.InputEnded, function(input)
-		if dragging and IsClickOrTouch(input) then
-			dragging = false
-			ThumbColor()
-		end
-	end)
 
 	function page.Recalc()
 		local sc = W.Scale.Scale
@@ -1608,8 +1580,13 @@ local function NewPage(W)
 		layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() page.Recalc() end)
 		return {frame = frame, layout = layout, count = 0}
 	end
-	page.Left = Column(9, 219)
-	page.Right = Column(237, 219)
+	if full then
+		page.Left = Column(9, 447)
+		page.Right = page.Left
+	else
+		page.Left = Column(9, 219)
+		page.Right = Column(237, 219)
+	end
 
 	table.insert(W.Pages, page)
 	return page
@@ -1619,9 +1596,7 @@ local function AttachSections(W, api, page)
 	Method(api, "AddSection", function(o) return NewSection(W, page, o) end)
 	api.Section = api.AddSection
 	api.CreateSection = api.AddSection
-	Method(api, "ScrollTo", function(y)
-		page.scroll.CanvasPosition = Vector2.new(0, math.max(0, y or 0))
-	end)
+	Method(api, "ScrollTo", function(y, instant) page.ScrollTo(y, instant) end)
 	return api
 end
 
@@ -1690,7 +1665,7 @@ local function BuildWatermark(W, cfg)
 		local grp = Create("Frame", {Size = UDim2.fromOffset(16, 12), BackgroundTransparency = 1, LayoutOrder = nx(), Parent = frame})
 		local ic = CreateIcon(grp, iconSpec, 12, UDim2.fromOffset(0, 0))
 		W.Bind(function(T, accent)
-			ic.ImageColor3 = colorKey == "Accent" and W.AccentOn("WmBg") or T[colorKey]
+			ic.ImageColor3 = colorKey == "Accent" and accent or T[colorKey]
 		end, ic)
 		table.insert(WM.Fade, {ic, "ImageTransparency", 0})
 		table.insert(WM.IconGroups, grp)
@@ -1771,7 +1746,8 @@ local function BuildWatermark(W, cfg)
 	end
 	task.spawn(function()
 		while W.Alive do
-			WM.DetailItem.label.Text = WM.Text()
+			local txt = WM.Text()
+			if WM.DetailItem.label.Text ~= txt then WM.DetailItem.label.Text = txt end
 			task.wait(0.25)
 		end
 	end)
@@ -1972,21 +1948,21 @@ local function BuildShell(W)
 	W.GearIcon = CreateIcon(SetBtn, {"settings", "cog"}, 12, UDim2.new(0.5, -6, 0.5, -6))
 	W.NavIcon(W.GearIcon)
 
+	-- ширина 0 + AnchorPoint справа: кнопки раскладываются вручную влево от правого края
 	W.SubHolder = Create("Frame", {
 		AnchorPoint = Vector2.new(1, 0.5),
-		Size = UDim2.new(0, 0, 0, 26),
-		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromOffset(0, 26),
 		BackgroundTransparency = 1,
 		Parent = Header,
 	})
-	Create("UIListLayout", {
-		FillDirection = Enum.FillDirection.Horizontal,
-		HorizontalAlignment = Enum.HorizontalAlignment.Right,
-		VerticalAlignment = Enum.VerticalAlignment.Center,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, 5),
+	W.SubIndicator = Create("Frame", {
+		Size = UDim2.fromOffset(26, 26),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
 		Parent = W.SubHolder,
 	})
+	Corner(W.SubIndicator, 5)
+	W.Paint(W.SubIndicator, "BackgroundColor3", "TileBg")
 
 	-- Bottom bar
 	local BottomBar = Create("Frame", {
@@ -2062,6 +2038,10 @@ end
 local function BuildNavigation(W)
 	function W.LayoutHeader()
 		local x = 444.5
+		if W.CfgBtn then
+			x = x - 30.5
+			W.CfgBtn.Position = UDim2.fromOffset(x, 4.5)
+		end
 		for _, b in ipairs(W.HeaderButtons) do
 			x = x - 30.5
 			b.Position = UDim2.fromOffset(x, 6)
@@ -2088,6 +2068,7 @@ local function BuildNavigation(W)
 	function W.PageFor()
 		local m = W.Nav.main
 		if m == "settings" then return W.SettingsPage end
+		if m == "configs" then return W.ConfigPage end
 		if #m.Subs > 0 and m.CurSub then return m.CurSub.Page end
 		return m.Page
 	end
@@ -2104,7 +2085,7 @@ local function BuildNavigation(W)
 			for _, p in ipairs(W.Pages) do
 				if p ~= page then p.Show(false) end
 			end
-			page.scroll.CanvasPosition = Vector2.new(0, 0)
+			page.ScrollTo(0, true)
 			page.Show(true)
 			if animate then
 				page.scroll.Position = UDim2.fromOffset(0, HEADER_H + 12)
@@ -2131,17 +2112,17 @@ local function BuildNavigation(W)
 	end
 
 	function W.RefreshAccentIcons()
-		local c = W.AccentOn("TileBg")
 		for _, ic in ipairs(W.AccentIcons) do
-			ic.ImageColor3 = c
+			ic.ImageColor3 = W.Accent
 			ic.ImageTransparency = 1 - W.AccentAlpha
 		end
 	end
 
-	-- Под-вкладки живут, пока открыта та же вкладка: активная плавно раскрывается
-	-- (ширина, фон, текст), прежняя сворачивается до иконки.
+	-- Под-вкладки живут, пока открыта та же вкладка. Плашка активной вкладки общая:
+	-- при переключении она переезжает и накрывает новую вкладку, та раскрывается, старая сворачивается.
 	local Sub = {tab = nil, count = 0, items = {}}
-	local SUB_TI = TweenInfo.new(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+	local SUB_TI = TweenInfo.new(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+	local SUB_GAP = 5
 
 	local function SubWidth(it)
 		local w = it.label.TextBounds.X
@@ -2149,41 +2130,60 @@ local function BuildNavigation(W)
 		return math.floor(it.textX + w + 8 + 0.5)
 	end
 
-	local function PaintSub(it, active, animate)
-		local T = W.Theme
-		local props = {
-			Size = active and UDim2.fromOffset(SubWidth(it), 26) or UDim2.fromOffset(26, 26),
-			BackgroundTransparency = active and 0 or 1,
-		}
-		local iconProps = it.icon and {
-			ImageColor3 = active and W.AccentOn("TileBg") or T.NavGray,
-			ImageTransparency = active and (1 - W.AccentAlpha) or 0,
-		}
-		if animate then
-			Tween(it.btn, SUB_TI, props)
-			Tween(it.label, SUB_TI, {TextTransparency = active and 0 or 1})
-			if it.letter then Tween(it.letter, SUB_TI, {TextTransparency = active and 1 or 0}) end
-			if iconProps then Tween(it.icon, SUB_TI, iconProps) end
-		else
-			it.btn.Size, it.btn.BackgroundTransparency = props.Size, props.BackgroundTransparency
-			it.label.TextTransparency = active and 0 or 1
-			if it.letter then it.letter.TextTransparency = active and 1 or 0 end
-			if iconProps then it.icon.ImageColor3, it.icon.ImageTransparency = iconProps.ImageColor3, iconProps.ImageTransparency end
+	local function LayoutSubs(animate)
+		local tab, T = Sub.tab, W.Theme
+		local right, activeX, activeW = 0, nil, nil
+		for i = #Sub.items, 1, -1 do
+			local it = Sub.items[i]
+			local active = tab ~= nil and it.sub == tab.CurSub
+			local w = active and SubWidth(it) or 26
+			local x = -(right + w)
+			right = right + w + SUB_GAP
+			if active then activeX, activeW = x, w end
+			local props = {Position = UDim2.fromOffset(x, 0), Size = UDim2.fromOffset(w, 26)}
+			local iconProps = it.icon and {
+				ImageColor3 = active and W.Accent or T.NavGray,
+				ImageTransparency = active and (1 - W.AccentAlpha) or 0,
+			}
+			if animate then
+				Tween(it.btn, SUB_TI, props)
+				Tween(it.label, SUB_TI, {TextTransparency = active and 0 or 1})
+				if it.letter then Tween(it.letter, SUB_TI, {TextTransparency = active and 1 or 0}) end
+				if iconProps then Tween(it.icon, SUB_TI, iconProps) end
+			else
+				it.btn.Position, it.btn.Size = props.Position, props.Size
+				it.label.TextTransparency = active and 0 or 1
+				if it.letter then it.letter.TextTransparency = active and 1 or 0 end
+				if iconProps then it.icon.ImageColor3, it.icon.ImageTransparency = iconProps.ImageColor3, iconProps.ImageTransparency end
+			end
+			it.label.TextColor3 = T.Text
+			if it.letter then it.letter.TextColor3 = T.NavGray end
 		end
-		it.label.TextColor3 = T.Text
-		if it.letter then it.letter.TextColor3 = T.NavGray end
+		local ind = W.SubIndicator
+		if not activeX then
+			ind.BackgroundTransparency = 1
+			return
+		end
+		local props = {Position = UDim2.fromOffset(activeX, 0), Size = UDim2.fromOffset(activeW, 26), BackgroundTransparency = 0}
+		if animate and ind.BackgroundTransparency < 1 then
+			Tween(ind, SUB_TI, props)
+		else
+			ind.Position, ind.Size, ind.BackgroundTransparency = props.Position, props.Size, 0
+		end
 	end
 
 	local function ClearSubs()
 		for _, it in ipairs(Sub.items) do it.btn:Destroy() end
 		table.clear(Sub.items)
 		Sub.tab, Sub.count = nil, 0
+		W.SubIndicator.BackgroundTransparency = 1
+		W.Prune()
 	end
 
 	function W.BuildSubTabs(instant)
 		local tab = W.Nav.main
-		if tab == "settings" or #tab.Subs == 0 then
-			ClearSubs()
+		if type(tab) ~= "table" or #tab.Subs == 0 then
+			if Sub.tab then ClearSubs() end
 			return
 		end
 		local fresh = Sub.tab ~= tab or Sub.count ~= #tab.Subs
@@ -2197,24 +2197,21 @@ local function BuildNavigation(W)
 					ClipsDescendants = true,
 					Text = "",
 					AutoButtonColor = false,
+					ZIndex = 2,
 					LayoutOrder = i,
 					Parent = W.SubHolder,
 				})
-				W.Paint(b, "BackgroundColor3", "TileBg")
-				Corner(b, 5)
 				local it = {sub = sub, btn = b, textX = 7}
 				if sub.Icon then
 					it.icon = CreateIcon(b, sub.Icon, 12, UDim2.fromOffset(7, 7), W.Theme.NavGray)
 					it.textX = 25
 				else
-					-- без иконки свернутая вкладка показывает первую букву
+					-- без иконки свёрнутая вкладка показывает первую букву
 					it.letter = Label(b, tostring(sub.Name):sub(1, 1), {Size = UDim2.fromOffset(26, 26), Align = Enum.TextXAlignment.Center, Weight = "SemiBold"})
 				end
 				it.label = Label(b, sub.Name, {Position = UDim2.fromOffset(it.textX, 0), AutoX = true, Size = UDim2.new(0, 0, 1, 0)})
 				it.label:GetPropertyChangedSignal("TextBounds"):Connect(function()
-					if Sub.tab == tab and tab.CurSub == sub then
-						it.btn.Size = UDim2.fromOffset(SubWidth(it), 26)
-					end
+					if Sub.tab == tab and tab.CurSub == sub then LayoutSubs(false) end
 				end)
 				b.MouseButton1Click:Connect(function()
 					if tab.CurSub == sub then return end
@@ -2223,19 +2220,12 @@ local function BuildNavigation(W)
 					W.RefreshNav()
 				end)
 				table.insert(Sub.items, it)
-				PaintSub(it, false, false)
 			end
 		end
-		for _, it in ipairs(Sub.items) do
-			PaintSub(it, it.sub == tab.CurSub, not instant)
-		end
+		LayoutSubs((not instant) and not fresh)
 	end
 
-	-- смена темы/акцента: перекрасить под-вкладки без анимации
-	W.Bind(function()
-		local tab = Sub.tab
-		for _, it in ipairs(Sub.items) do PaintSub(it, tab and it.sub == tab.CurSub, false) end
-	end)
+	W.Bind(function() LayoutSubs(false) end)
 
 	function W.RefreshNav(instant)
 		if not W.Alive then return end
@@ -2274,6 +2264,18 @@ local function BuildNavigation(W)
 		W.GearIcon.ImageColor3 = T.NavGray
 		W.GearIcon.ImageTransparency = 0
 		if gearActive then table.insert(W.AccentIcons, W.GearIcon) end
+
+		if W.CfgBtn then
+			local cfgActive = W.Nav.main == "configs"
+			if instant then
+				W.CfgBtn.BackgroundTransparency = cfgActive and 0 or 1
+			else
+				Tween(W.CfgBtn, TI_FAST, {BackgroundTransparency = cfgActive and 0 or 1})
+			end
+			W.CfgIcon.ImageColor3 = T.NavGray
+			W.CfgIcon.ImageTransparency = 0
+			if cfgActive then table.insert(W.AccentIcons, W.CfgIcon) end
+		end
 
 		W.BuildSubTabs(instant)
 		W.RefreshAccentIcons()
@@ -2437,6 +2439,216 @@ local function BuildSettings(W, o)
 	return api
 end
 
+-- Страница конфигов (кнопка слева от шестерёнки): Actions + Config List.
+local function BuildConfigs(W, Window)
+	local page = NewPage(W, true)
+	W.ConfigPage = page
+	local api = AttachSections(W, {}, page)
+	local state = {active = nil}
+
+	local btn = Create("TextButton", {
+		Size = UDim2.fromOffset(26, 27),
+		BackgroundTransparency = 1,
+		Text = "",
+		AutoButtonColor = false,
+		Parent = W.Header,
+	})
+	W.Paint(btn, "BackgroundColor3", "TileBg")
+	Corner(btn, 5)
+	W.CfgBtn = btn
+	W.CfgIcon = CreateIcon(btn, {"file-text", "file"}, 12, UDim2.new(0.5, -6, 0.5, -6))
+	W.NavIcon(W.CfgIcon)
+	btn.MouseButton1Click:Connect(function() Window.SelectConfigs() end)
+	W.LayoutHeader()
+
+	local function Note(text)
+		Window.Notify({Title = "Configs", Content = text, Icon = {"file-text", "file"}, Duration = 2.5})
+	end
+
+	-- ---------- Actions ----------
+	local actions = NewSection(W, page, {Name = "Actions"})
+	local box = Create("TextBox", {
+		Size = UDim2.fromScale(1, 1),
+		BorderSizePixel = 0,
+		Text = "",
+		PlaceholderText = "Name (optional)",
+		ClearTextOnFocus = false,
+		TextSize = TEXT,
+		Weight = "Medium",
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = actions._raw(25),
+	})
+	Corner(box, 5)
+	local boxStroke = Stroke(box, WHITE, 1)
+	Create("UIPadding", {PaddingLeft = UDim.new(0, 9), PaddingRight = UDim.new(0, 9), Parent = box})
+	W.Bind(function(T)
+		box.BackgroundColor3 = T.DropdownBg
+		boxStroke.Color = T.DropdownBorder
+		box.TextColor3 = T.Text
+		box.PlaceholderColor3 = T.TextDim
+	end, box)
+
+	local function WideButton(sec, text, icon, fn)
+		local b = Create("TextButton", {Size = UDim2.fromScale(1, 1), BorderSizePixel = 0, Text = "", AutoButtonColor = false, Parent = sec._raw(27)})
+		Corner(b, 5)
+		local st = Stroke(b, WHITE, 1)
+		local content = Create("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.new(0, 0, 0, 16),
+			AutomaticSize = Enum.AutomaticSize.X,
+			BackgroundTransparency = 1,
+			Parent = b,
+		})
+		Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, 5),
+			Parent = content,
+		})
+		local ic = Create("ImageLabel", {Size = UDim2.fromOffset(12, 12), BackgroundTransparency = 1, LayoutOrder = 1, Parent = content})
+		ApplyIcon(ic, icon)
+		local lb = Label(content, text, {AutoX = true, Size = UDim2.new(0, 0, 1, 0)})
+		lb.LayoutOrder = 2
+		local hover = false
+		local function Paint()
+			local T = W.Theme
+			b.BackgroundColor3 = hover and T.TileHover or T.DropdownBg
+			st.Color = T.DropdownBorder
+			lb.TextColor3 = hover and T.Text or T.TextGray
+			ic.ImageColor3 = lb.TextColor3
+		end
+		W.Bind(Paint, b)
+		b.MouseEnter:Connect(function() hover = true Paint() end)
+		b.MouseLeave:Connect(function() hover = false Paint() end)
+		b.MouseButton1Click:Connect(fn)
+		return b
+	end
+
+	-- ---------- Config List ----------
+	local list = NewSection(W, page, {Name = "Config List"})
+	local activeLbl = Label(list._raw(16), "Active: None")
+	W.Paint(activeLbl, "TextColor3", "TextGray")
+	local holder = list._raw(0)
+	Create("UIListLayout", {Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder, Parent = holder})
+
+	local Refresh
+	local function IconButton(parent, x, icon, onClick)
+		local b = Create("TextButton", {
+			Size = UDim2.fromOffset(24, 24),
+			Position = UDim2.new(1, x, 0.5, -12),
+			BackgroundTransparency = 1,
+			Text = "",
+			Parent = parent,
+		})
+		local ic = CreateIcon(b, icon, 12, UDim2.new(0.5, -6, 0.5, -6))
+		local st = {hover = false, armed = false}
+		function st.Paint()
+			local T = W.Theme
+			ic.ImageColor3 = st.armed and W.Accent or (st.hover and T.Text or T.NavGray)
+		end
+		W.Bind(st.Paint, b)
+		b.MouseEnter:Connect(function() st.hover = true st.Paint() end)
+		b.MouseLeave:Connect(function() st.hover = false st.Paint() end)
+		b.MouseButton1Click:Connect(function() onClick(st) end)
+		return st
+	end
+
+	local function Item(i, name)
+		local row = Create("Frame", {Size = UDim2.new(1, 0, 0, 45), BorderSizePixel = 0, LayoutOrder = i, Parent = holder})
+		Corner(row, 5)
+		W.Paint(row, "BackgroundColor3", "DropdownBg")
+		local title = Label(row, name .. ".cfg", {Position = UDim2.fromOffset(14, 7), Size = UDim2.new(1, -120, 0, 16), Weight = "SemiBold", Truncate = true})
+		local idx = Label(row, tostring(i), {Position = UDim2.fromOffset(14, 24), Size = UDim2.new(1, -120, 0, 14), TextSize = 10})
+		W.Bind(function(T, accent)
+			title.TextColor3 = (state.active == name) and accent or T.Text
+			idx.TextColor3 = T.TextDim
+		end, row)
+
+		IconButton(row, -112, {"download", "import"}, function()
+			local ok, err = Window.LoadConfig(name)
+			if ok then
+				state.active = name
+				Refresh()
+				Note("Loaded " .. name .. ".cfg")
+			else
+				Note("Load failed: " .. tostring(err))
+			end
+		end)
+		IconButton(row, -82, {"save"}, function()
+			local ok, err = Window.SaveConfig(name)
+			Note(ok and ("Saved " .. name .. ".cfg") or ("Save failed: " .. tostring(err)))
+		end)
+		-- удаление в два клика: первый подсвечивает корзину на 2 секунды
+		IconButton(row, -52, {"trash-2", "trash"}, function(st)
+			if not st.armed then
+				st.armed = true
+				st.Paint()
+				task.delay(2, function()
+					if st.armed then
+						st.armed = false
+						if row.Parent then st.Paint() end
+					end
+				end)
+				return
+			end
+			st.armed = false
+			Window.DeleteConfig(name)
+			if state.active == name then state.active = nil end
+			Refresh()
+			Note("Deleted " .. name .. ".cfg")
+		end)
+	end
+
+	function Refresh()
+		for _, ch in ipairs(holder:GetChildren()) do
+			if ch:IsA("GuiObject") then ch:Destroy() end
+		end
+		W.Prune()
+		local names = Window.ListConfigs()
+		if #names == 0 then
+			local empty = Label(holder, "No configs yet", {Size = UDim2.new(1, 0, 0, 20)})
+			W.Paint(empty, "TextColor3", "TextDim")
+			holder.Size = UDim2.new(1, 0, 0, 20)
+		else
+			for i, name in ipairs(names) do Item(i, name) end
+			holder.Size = UDim2.new(1, 0, 0, #names * 45 + (#names - 1) * 5)
+		end
+		activeLbl.Text = "Active: " .. (state.active and (state.active .. ".cfg") or "None")
+	end
+
+	local function Unique(name)
+		local taken = {}
+		for _, n in ipairs(Window.ListConfigs()) do taken[n] = true end
+		if not taken[name] then return name end
+		local k = 1
+		while taken[name .. "-" .. k] do k = k + 1 end
+		return name .. "-" .. k
+	end
+
+	WideButton(actions, "Create New", {"file-plus", "file"}, function()
+		local name = tostring(box.Text):gsub("^%s+", ""):gsub("%s+$", ""):gsub("%.cfg$", ""):gsub("[^%w%-_ ]", "_")
+		if name == "" then name = "config_" .. (#Window.ListConfigs() + 1) end
+		name = Unique(name)
+		local ok, err = Window.SaveConfig(name)
+		if ok then
+			state.active = name
+			box.Text = ""
+			Refresh()
+			Note("Created " .. name .. ".cfg")
+		else
+			Note("Create failed: " .. tostring(err))
+		end
+	end)
+	WideButton(actions, "Refresh List", {"refresh-cw"}, function() Refresh() end)
+
+	Refresh()
+	W.ConfigState = state
+	W.RefreshConfigs = Refresh
+	return api
+end
+
 local function CreateWindow(o)
 	o = Opts(o)
 	if o.Name and not o.Title then o.Title = o.Name end
@@ -2457,21 +2669,27 @@ local function CreateWindow(o)
 		ToggleKey = o.ToggleKey or o.Keybind or Enum.KeyCode.RightShift,
 		Nav = {main = "settings"},
 		NotifyOrder = 0,
+		ConfigFolder = o.ConfigFolder or Library.ConfigFolder,
 	}
 	W.LogoSpec = NormalizeLogo(o.Logo or o.Icon, W.Title)
 	LoadIcons()
 
+	-- Подписки на тему/акцент. owner = инстанс: когда он уничтожен (Parent == nil),
+	-- подписка выкидывается при ближайшем Prune (удаление элементов/секций, смена темы).
 	function W.Bind(fn, owner)
 		table.insert(W.Listeners, {fn = fn, owner = owner})
 		fn(W.Theme, W.Accent, W.AccentAlpha)
 	end
-	function W.Refresh()
+	function W.Prune()
 		local alive = {}
 		for _, e in ipairs(W.Listeners) do
 			if not e.owner or e.owner.Parent then table.insert(alive, e) end
 		end
 		W.Listeners = alive
-		for _, e in ipairs(alive) do
+	end
+	function W.Refresh()
+		W.Prune()
+		for _, e in ipairs(W.Listeners) do
 			local ok, err = pcall(e.fn, W.Theme, W.Accent, W.AccentAlpha)
 			if not ok then warn("[Zenin] theme listener error: " .. tostring(err)) end
 		end
@@ -2490,7 +2708,39 @@ local function CreateWindow(o)
 		table.insert(W.Conns, c)
 		return c
 	end
+	-- Единственная пара глобальных подключений ввода на окно: перетаскивание окна/ватермарка,
+	-- слайдеры, скроллбары и пикер цвета регистрируют здесь активный drag, а не свои соединения.
+	W.Drag = nil
+	function W.BeginDrag(input, move, finish, tag)
+		if W.Drag then return false end
+		W.Drag = {input = input, move = move, finish = finish, tag = tag}
+		return true
+	end
+	function W.CancelDrag(tag)
+		local d = W.Drag
+		if d and (tag == nil or d.tag == tag) then
+			W.Drag = nil
+			if d.finish then SafeCall(d.finish, nil, true) end
+		end
+	end
+	local function SameInput(d, input, ended)
+		if d.input.UserInputType == Enum.UserInputType.Touch then return input == d.input end
+		if ended then return input.UserInputType == d.input.UserInputType end
+		return input.UserInputType == Enum.UserInputType.MouseMovement
+	end
+	W.Connect(UserInputService.InputChanged, function(input)
+		local d = W.Drag
+		if d and d.move and SameInput(d, input, false) then SafeCall(d.move, input) end
+	end)
+	W.Connect(UserInputService.InputEnded, function(input)
+		local d = W.Drag
+		if not d or not SameInput(d, input, true) then return end
+		W.Drag = nil
+		if d.finish then SafeCall(d.finish, input, false) end
+	end)
+
 	function W.ClosePopup()
+		W.CancelDrag("popup")
 		for _, c in ipairs(W.PopupConns) do c:Disconnect() end
 		table.clear(W.PopupConns)
 		if W.ActivePopup then
@@ -2499,12 +2749,6 @@ local function CreateWindow(o)
 		end
 		W.PopupOwner = nil
 		if W.PopupLayer then W.PopupLayer.Visible = false end
-	end
-	-- Акцент для элемента на фоне T[bgKey]; если почти сливается — цвет текста темы.
-	function W.AccentOn(bgKey)
-		local bg = W.Theme[bgKey] or W.Theme.CardBg
-		if LowContrast(W.Accent, bg) then return W.Theme.Text end
-		return W.Accent
 	end
 	function W.SetAccent(c, alpha)
 		if typeof(c) == "Color3" then W.Accent = c end
@@ -2664,27 +2908,27 @@ local function CreateWindow(o)
 		return true
 	end)
 	local function Folder()
-		local f = o.ConfigFolder or Library.ConfigFolder
+		local f = W.ConfigFolder
 		if isfolder and makefolder and not isfolder(f) then pcall(makefolder, f) end
 		return f
 	end
 	Method(Window, "SaveConfig", function(name)
 		if not writefile then return false, "writefile unsupported" end
 		local ok, err = pcall(function()
-			writefile(Folder() .. "/" .. tostring(name or "default") .. ".json", HttpService:JSONEncode(Window.GetConfig()))
+			writefile(Folder() .. "/" .. tostring(name or "default") .. ".cfg", HttpService:JSONEncode(Window.GetConfig()))
 		end)
 		return ok, err
 	end)
 	Method(Window, "LoadConfig", function(name)
 		if not (readfile and isfile) then return false, "readfile unsupported" end
-		local path = Folder() .. "/" .. tostring(name or "default") .. ".json"
+		local path = Folder() .. "/" .. tostring(name or "default") .. ".cfg"
 		if not isfile(path) then return false, "not found" end
 		local ok, data = pcall(function() return HttpService:JSONDecode(readfile(path)) end)
 		if not ok then return false, data end
 		return Window.ApplyConfig(data)
 	end)
 	Method(Window, "DeleteConfig", function(name)
-		local path = Folder() .. "/" .. tostring(name or "default") .. ".json"
+		local path = Folder() .. "/" .. tostring(name or "default") .. ".cfg"
 		if delfile and isfile and isfile(path) then
 			pcall(delfile, path)
 			return true
@@ -2697,10 +2941,38 @@ local function CreateWindow(o)
 		local ok, files = pcall(listfiles, Folder())
 		if not ok then return out end
 		for _, f in ipairs(files) do
-			local n = tostring(f):match("([^/\\]+)%.json$")
+			local n = tostring(f):match("([^/\\]+)%.cfg$")
 			if n then table.insert(out, n) end
 		end
+		table.sort(out)
 		return out
+	end)
+
+	Method(Window, "EnableConfigs", function(co)
+		if W.ConfigPage then return W.ConfigApi end
+		co = co or {}
+		if co.Folder then W.ConfigFolder = co.Folder end
+		W.ConfigApi = BuildConfigs(W, Window)
+		W.RefreshNav(true)
+		return W.ConfigApi
+	end)
+	Method(Window, "SelectConfigs", function()
+		if not W.ConfigPage then return end
+		W.Nav.main = "configs"
+		W.Navigated = true
+		W.RefreshNav()
+		W.RefreshConfigs()
+	end)
+	Method(Window, "RefreshConfigs", function() if W.RefreshConfigs then W.RefreshConfigs() end end)
+	Method(Window, "GetActiveConfig", function() return W.ConfigState and W.ConfigState.active end)
+	Method(Window, "GetStats", function()
+		return {
+			Listeners = #W.Listeners,
+			Connections = #W.Conns,
+			Elements = #W.Elements,
+			Pages = #W.Pages,
+			Instances = W.Alive and #W.Gui:GetDescendants() or 0,
+		}
 	end)
 
 	Method(Window, "OnUnload", function(fn) table.insert(W.UnloadCallbacks, fn) end)
@@ -2708,8 +2980,12 @@ local function CreateWindow(o)
 		if not W.Alive then return end
 		W.Alive = false
 		W.ClosePopup()
+		W.CancelDrag()
+		for _, p in ipairs(W.Pages) do p.StopScroll() end
 		for _, c in ipairs(W.Conns) do pcall(function() c:Disconnect() end) end
 		table.clear(W.Conns)
+		local hi = IndexOf(ThemeHooks, W.ThemeHook)
+		if hi then table.remove(ThemeHooks, hi) end
 		for _, el in ipairs(W.Elements) do
 			if el.Flag then
 				Library.Flags[el.Flag] = nil
@@ -2718,13 +2994,21 @@ local function CreateWindow(o)
 		end
 		for _, fn in ipairs(W.UnloadCallbacks) do SafeCall(fn) end
 		W.Gui:Destroy()
+		-- отпускаем все ссылки на инстансы и замыкания, чтобы GC собрал окно целиком
+		W.Listeners = {}
+		for _, t in ipairs({W.Elements, W.Pages, W.Tabs, W.HeaderButtons, W.AccentIcons, W.UnloadCallbacks, W.PopupConns}) do
+			table.clear(t)
+		end
+		W.ActivePopup, W.PopupOwner, W.CurrentPage, W.ConfigPage = nil, nil, nil, nil
 		if Library.ActiveWindow == Window then Library.ActiveWindow = nil end
 	end)
 	Window.Unload = Window.Destroy
 
-	table.insert(ThemeHooks, function()
+	W.ThemeHook = function()
 		if W.Alive and W.ThemeDropdown then W.ThemeDropdown.SetOptions(CopyList(Library.ThemeOrder), true) end
-	end)
+	end
+	table.insert(ThemeHooks, W.ThemeHook)
+	if o.Configs then Window.EnableConfigs(type(o.Configs) == "table" and o.Configs or nil) end
 
 	Library.ActiveWindow = Window
 	return Window
