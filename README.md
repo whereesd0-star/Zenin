@@ -27,6 +27,7 @@ local Window = Library:CreateWindow({
     ScrollbarSize = 6,
     MouseWheel = false,             -- true = листать колесом (в эталоне только полосой)
     ConfigFolder = "MyHub",
+    Configs = true,                 -- кнопка конфигов слева от шестерёнки (по желанию)
     Parent = nil,                   -- по умолчанию gethui() или PlayerGui
     Watermark = {                   -- или false, чтобы скрыть
         Title = "myhub", TitleIcon = "tag",
@@ -71,9 +72,25 @@ local Window = Library:CreateWindow({
 | `SetToggleKey(KeyCode)`, `GetToggleKey()`, `SetPosition(UDim2)`, `Center()` | клавиша, позиция, вернуть в центр |
 | `AddHeaderButton({Icon, Callback})` | иконка-кнопка в шапке слева от шестерёнки (`:SetIcon`, `:SetCallback`, `:Destroy`) |
 | `Notify({Title, Content, Icon, Duration})` | уведомление справа снизу |
-| `SaveConfig(name)`, `LoadConfig(name)`, `DeleteConfig(name)`, `ListConfigs()` | конфиги (все элементы с `Flag` + акцент + настройки) |
+| `EnableConfigs({Folder})` | включить страницу конфигов (то же, что `Configs = true`); возвращает страницу, в неё можно добавить свои секции |
+| `SelectConfigs()`, `RefreshConfigs()`, `GetActiveConfig()` | страница конфигов |
+| `SaveConfig(name)`, `LoadConfig(name)`, `DeleteConfig(name)`, `ListConfigs()` | файлы `<папка>/<name>.cfg` (все элементы с `Flag` + акцент + настройки) |
+| `GetStats()` | число подписок, соединений, элементов, страниц и инстансов (для контроля памяти) |
 | `GetConfig()`, `ApplyConfig(table)` | конфиг таблицей |
 | `OnUnload(fn)`, `Destroy()` / `Unload()` | выгрузка (отключает все соединения) |
+
+## Конфиги
+
+`Configs = true` добавляет в шапку кнопку слева от шестерёнки. На её странице:
+- **Actions**: поле «Name (optional)», **Create New** (без имени будет `config_N`, повтор имени получает суффикс `-1`), **Refresh List**;
+- **Config List**: `Active: ...` и список `.cfg` с кнопками загрузить / перезаписать / удалить (удаление в два клика).
+
+## Память
+
+- На окно приходится одна пара глобальных подключений ввода. Перетаскивание окна и ватермарка, слайдеры, скроллбары и пикер цвета работают через общий диспетчер, поэтому новые элементы не добавляют соединений.
+- Плавная прокрутка подключается к `RenderStepped` только пока контент едет.
+- Подписки на тему и акцент удаляются вместе с элементом или секцией (`Destroy`).
+- `Window:Destroy()` отключает всё, удаляет GUI, очищает флаги и внутренние таблицы.
 
 ## Вкладки, под-вкладки, секции
 
