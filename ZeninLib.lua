@@ -83,7 +83,7 @@ Library.Themes.Dark = {
 	PopupBg = rgb(14, 14, 14), PopupHover = rgb(22, 22, 22),
 	SliderTrack = rgb(22, 22, 22), KnobFill = rgb(14, 14, 14), KnobStroke = rgb(246, 246, 249), KnobStrokeOff = rgb(150, 150, 156),
 	ToggleOffBg = rgb(22, 22, 22), ToggleOffDot = rgb(44, 44, 44),
-	ToggleOffBgOff = rgb(19, 19, 19), ToggleOffDotOff = rgb(32, 32, 32), ToggleOnDot = rgb(255, 255, 255),
+	ToggleOffBgOff = rgb(19, 19, 19), ToggleOffDotOff = rgb(32, 32, 32), ToggleOnDot = rgb(255, 255, 255), ToggleOnDotDark = rgb(20, 20, 22),
 	Text = rgb(255, 255, 255), TextGray = rgb(160, 160, 168), TextDim = rgb(88, 88, 96),
 	ValueOff = rgb(110, 110, 110), NavGray = rgb(180, 180, 188), Divider = rgb(34, 34, 38),
 	ScrollTrack = rgb(18, 18, 18), ScrollThumb = rgb(22, 22, 22), ScrollHover = rgb(30, 30, 30), ScrollDrag = rgb(40, 40, 40),
@@ -122,21 +122,6 @@ AddTheme("Light", {
 	ScrollTrack = rgb(230, 230, 234), ScrollThumb = rgb(210, 210, 216), ScrollHover = rgb(196, 196, 204), ScrollDrag = rgb(180, 180, 190),
 	WmBg = rgb(248, 248, 250), WmStroke = rgb(214, 214, 222), WmDivider = rgb(214, 214, 222), WmText = rgb(20, 20, 24),
 	WmDetailIcon = rgb(90, 90, 100),
-})
-
-AddTheme("Midnight", {
-	WindowBg = rgb(11, 12, 18), BarBg = rgb(14, 15, 23), BarLine = rgb(20, 22, 32),
-	CardBg = rgb(15, 16, 24), BoxBg = rgb(19, 21, 31), BoxBorder = rgb(25, 27, 40),
-	TileBg = rgb(21, 23, 34), TileHover = rgb(29, 32, 46),
-	DropdownBg = rgb(19, 21, 31), DropdownBorder = rgb(36, 39, 56), DropdownBorderOff = rgb(25, 27, 38),
-	PopupBg = rgb(12, 13, 20), PopupHover = rgb(21, 23, 34),
-	SliderTrack = rgb(22, 24, 36), KnobFill = rgb(11, 12, 18),
-	ToggleOffBg = rgb(22, 24, 36), ToggleOffDot = rgb(48, 52, 74),
-	ToggleOffBgOff = rgb(17, 18, 27), ToggleOffDotOff = rgb(32, 35, 50),
-	Text = rgb(240, 242, 255), TextGray = rgb(150, 155, 182), TextDim = rgb(80, 84, 110),
-	ValueOff = rgb(100, 104, 128), NavGray = rgb(170, 175, 202), Divider = rgb(30, 33, 48),
-	ScrollTrack = rgb(14, 15, 23), ScrollThumb = rgb(21, 23, 34), ScrollHover = rgb(29, 32, 46), ScrollDrag = rgb(40, 44, 62),
-	WmBg = rgb(11, 12, 18), WmStroke = rgb(32, 35, 50), WmDivider = rgb(36, 39, 56),
 })
 
 -- ============================================================================
@@ -366,6 +351,15 @@ local function FormatNumber(v, decimals)
 	return tostring(math.floor(v + 0.5))
 end
 
+local function Luma(c)
+	return 0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B
+end
+
+-- Акцент слишком близок к фону (например белый акцент на светлом фоне).
+local function LowContrast(a, b, limit)
+	return math.abs(Luma(a) - Luma(b)) < (limit or 0.12)
+end
+
 local function ToHex(c)
 	return string.format("%02X%02X%02X", math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
 end
@@ -378,43 +372,13 @@ local function FromHex(hex)
 	return Color3.fromRGB(r, g, b)
 end
 
--- Перетаскивание (порог 4px, сглаживание, кламп к экрану, двойной клик = вернуть на место).
+-- Перетаскивание: порог 4px (клик не двигает), окно идёт за курсором без задержки,
+-- без ограничений по краям экрана. opts.OnClick вызывается на клик без перетаскивания.
 local function MakeDraggable(W, handle, target, opts)
 	opts = opts or {}
-	local MARGIN, THRESH, SMOOTH, DOUBLE = opts.Margin or 56, 4, 30, 0.3
-	local home = target.Position
-	local drag = {input = nil, started = false}
-	local startMouse, startPos, startAbs = Vector2.new(), target.Position, Vector2.new()
-	local goal, cur = Vector2.new(), Vector2.new()
-	local stepConn, homeTween
-	local lastClick = 0
+	local THRESH = 4
+	local drag = nil -- {input, startMouse, startPos, started}
 
-	local function ScreenSize()
-		local gui = target:FindFirstAncestorWhichIsA("ScreenGui")
-		return gui and gui.AbsoluteSize or Vector2.new(1920, 1080)
-	end
-	local function ClampAbs(abs)
-		local screen, size = ScreenSize(), target.AbsoluteSize
-		return Vector2.new(
-			math.clamp(abs.X, MARGIN - size.X, math.max(MARGIN - size.X, screen.X - MARGIN)),
-			math.clamp(abs.Y, 0, math.max(0, screen.Y - MARGIN))
-		)
-	end
-	local function Apply(d)
-		target.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
-	end
-	local function StopStep()
-		if stepConn then stepConn:Disconnect() stepConn = nil end
-	end
-	local function StartStep()
-		if stepConn then return end
-		stepConn = RunService.RenderStepped:Connect(function(dt)
-			cur = cur:Lerp(goal, 1 - math.exp(-dt * SMOOTH))
-			if (goal - cur).Magnitude < 0.25 then cur = goal end
-			Apply(cur)
-			if cur == goal and not drag.input then StopStep() end
-		end)
-	end
 	local function OverButton(pos)
 		for _, d in ipairs(handle:GetDescendants()) do
 			if d:IsA("GuiButton") and d.Visible then
@@ -426,72 +390,39 @@ local function MakeDraggable(W, handle, target, opts)
 		end
 		return false
 	end
-	local function GoHome()
-		StopStep()
-		if homeTween then homeTween:Cancel() end
-		homeTween = Tween(target, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = home})
-	end
 
 	W.Connect(handle.InputBegan, function(input)
-		if not IsClickOrTouch(input) or drag.input then return end
+		if not IsClickOrTouch(input) or drag then return end
 		local pos = Vector2.new(input.Position.X, input.Position.Y)
 		if OverButton(pos) then return end
-		if homeTween then homeTween:Cancel() homeTween = nil end
-		drag.input, drag.started = input, false
-		startMouse, startPos, startAbs = pos, target.Position, target.AbsolutePosition
-		cur, goal = Vector2.new(), Vector2.new()
+		drag = {input = input, startMouse = pos, startPos = target.Position, started = false}
 	end)
 
 	W.Connect(UserInputService.InputChanged, function(input)
-		if not drag.input then return end
-		local isTouch = drag.input.UserInputType == Enum.UserInputType.Touch
-		if isTouch then
+		if not drag then return end
+		if drag.input.UserInputType == Enum.UserInputType.Touch then
 			if input ~= drag.input then return end
 		elseif input.UserInputType ~= Enum.UserInputType.MouseMovement then
 			return
 		end
-		local delta = Vector2.new(input.Position.X, input.Position.Y) - startMouse
+		local delta = Vector2.new(input.Position.X, input.Position.Y) - drag.startMouse
 		if not drag.started then
 			if delta.Magnitude < THRESH then return end
 			drag.started = true
 		end
-		goal = ClampAbs(startAbs + delta) - startAbs
-		StartStep()
+		local p = drag.startPos
+		target.Position = UDim2.new(p.X.Scale, p.X.Offset + delta.X, p.Y.Scale, p.Y.Offset + delta.Y)
 	end)
 
 	W.Connect(UserInputService.InputEnded, function(input)
-		local d = drag.input
+		local d = drag
 		if not d then return end
-		local isTouch = d.UserInputType == Enum.UserInputType.Touch
-		local same = isTouch and (input == d) or ((not isTouch) and input.UserInputType == d.UserInputType)
+		local isTouch = d.input.UserInputType == Enum.UserInputType.Touch
+		local same = isTouch and (input == d.input) or ((not isTouch) and input.UserInputType == d.input.UserInputType)
 		if not same then return end
-		local wasDrag = drag.started
-		drag.input, drag.started = nil, false
-		if not wasDrag then
-			local now = os.clock()
-			if now - lastClick < DOUBLE then
-				lastClick = 0
-				GoHome()
-			else
-				lastClick = now
-			end
-		end
+		drag = nil
+		if not d.started and opts.OnClick then SafeCall(opts.OnClick) end
 	end)
-
-	local gui = target:FindFirstAncestorWhichIsA("ScreenGui")
-	if gui then
-		W.Connect(gui:GetPropertyChangedSignal("AbsoluteSize"), function()
-			if drag.input then return end
-			local abs = target.AbsolutePosition
-			local diff = ClampAbs(abs) - abs
-			if diff.Magnitude > 0.5 then
-				local p = target.Position
-				target.Position = UDim2.new(p.X.Scale, p.X.Offset + diff.X, p.Y.Scale, p.Y.Offset + diff.Y)
-			end
-		end)
-	end
-
-	W.Connect(handle.Destroying, StopStep)
 end
 
 -- Шахматка под альфой (w и h кратны sq)
@@ -571,7 +502,7 @@ local function CreateLogo(W, parent, spec, size, textSize)
 	if spec.Color and target then
 		target[prop] = spec.Color
 	elseif target then
-		W.Bind(function(_, accent) target[prop] = accent end, target)
+		W.Bind(function() target[prop] = W.AccentOn("BarBg") end, target)
 	end
 	return box, fades
 end
@@ -706,13 +637,16 @@ local function OpenList(W, owner, btn, options, isSelected, onPick, multi)
 	Create("UIListLayout", {SortOrder = Enum.SortOrder.LayoutOrder, Parent = list})
 
 	local items = {}
+	local weak = LowContrast(W.Accent, T.Text, 0.15)
 	local function Paint(it)
 		local sel = isSelected(it.opt)
-		it.btn.TextColor3 = sel and W.Accent or T.Text
+		it.mark = sel and weak
+		it.btn.BackgroundTransparency = (it.mark or it.hover) and 0 or 1
+		it.btn.TextColor3 = sel and W.AccentOn("PopupBg") or T.Text
 		ApplyFont(it.btn, sel and "SemiBold" or "Medium")
 		if it.check then
 			it.check.Visible = sel
-			it.check.ImageColor3 = W.Accent
+			it.check.ImageColor3 = W.AccentOn("PopupBg")
 		end
 	end
 
@@ -741,8 +675,8 @@ local function OpenList(W, owner, btn, options, isSelected, onPick, multi)
 		end
 		table.insert(items, it)
 		Paint(it)
-		ob.MouseEnter:Connect(function() ob.BackgroundTransparency = 0 end)
-		ob.MouseLeave:Connect(function() ob.BackgroundTransparency = 1 end)
+		ob.MouseEnter:Connect(function() it.hover = true ob.BackgroundTransparency = 0 end)
+		ob.MouseLeave:Connect(function() it.hover = false ob.BackgroundTransparency = it.mark and 0 or 1 end)
 		ob.MouseButton1Click:Connect(function()
 			onPick(opt)
 			if multi then
@@ -779,15 +713,22 @@ local function AddToggle(W, S, o)
 		Parent = row,
 	})
 	Corner(sw, 7)
+	local swStroke = Stroke(sw, WHITE, 1, 1)
 	local dot = Create("Frame", {Size = UDim2.fromOffset(8, 8), BorderSizePixel = 0, ZIndex = 2, Parent = sw})
 	Corner(dot, 4)
 
 	function el._apply(animate)
 		local T, enabled = W.Theme, el.Enabled
 		local bg, bgT, dotC, dotPos
+		local strokeT = 1
 		if state then
-			bg, bgT = W.Accent, 1 - W.AccentAlpha * (enabled and 1 or 0.45)
-			dotC, dotPos = T.ToggleOnDot, UDim2.new(1, -11, 0.5, -4)
+			local a = W.AccentAlpha * (enabled and 1 or 0.45)
+			bg, bgT = W.Accent, 1 - a
+			-- реальный цвет плашки с учётом альфы: светлая плашка -> тёмная точка
+			local seen = T.CardBg:Lerp(W.Accent, a)
+			dotC = Luma(seen) > 0.6 and T.ToggleOnDotDark or T.ToggleOnDot
+			dotPos = UDim2.new(1, -11, 0.5, -4)
+			if LowContrast(seen, T.CardBg) then strokeT = 0 end
 		else
 			bg = enabled and T.ToggleOffBg or T.ToggleOffBgOff
 			bgT = 0
@@ -796,6 +737,8 @@ local function AddToggle(W, S, o)
 		end
 		lbl.TextColor3 = (not enabled) and T.TextDim or (state and T.Text or T.TextGray)
 		ApplyFont(lbl, state and "SemiBold" or "Medium")
+		swStroke.Color = T.DropdownBorder
+		swStroke.Transparency = strokeT
 		if animate then
 			local ti = TweenInfo.new(0.14, Enum.EasingStyle.Quad)
 			Tween(dot, ti, {Position = dotPos, BackgroundColor3 = dotC})
@@ -876,17 +819,25 @@ local function AddSlider(W, S, o)
 	local R = 5.5
 	local fill = Create("Frame", {BorderSizePixel = 0, Parent = track})
 	Corner(fill, 2)
+	local fillStroke = Stroke(fill, WHITE, 1, 1)
 	local knob = Create("Frame", {Size = UDim2.fromOffset(7, 7), BorderSizePixel = 0, ZIndex = 3, Parent = track})
 	Corner(knob, 4)
 	local ks = Stroke(knob, WHITE, 2)
 
-	local function Layout()
+	local SLIDE = TweenInfo.new(0.12, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+	local function Layout(animate)
 		local p = (value - minV) / (maxV - minV)
-		fill.Size = UDim2.new(p, R * (1 - 2 * p), 1, 0)
-		knob.Position = UDim2.new(p, R * (1 - 2 * p) - 3.5, 0.5, -3.5)
+		local fs = UDim2.new(p, R * (1 - 2 * p), 1, 0)
+		local kp = UDim2.new(p, R * (1 - 2 * p) - 3.5, 0.5, -3.5)
+		if animate then
+			Tween(fill, SLIDE, {Size = fs})
+			Tween(knob, SLIDE, {Position = kp})
+		else
+			fill.Size, knob.Position = fs, kp
+		end
 		valLbl.Text = Fmt(value)
 	end
-	Layout()
+	Layout(false)
 
 	function el._apply()
 		local T, enabled = W.Theme, el.Enabled
@@ -894,7 +845,10 @@ local function AddSlider(W, S, o)
 		valLbl.TextColor3 = enabled and T.TextGray or T.TextDim
 		track.BackgroundColor3 = T.SliderTrack
 		fill.BackgroundColor3 = W.Accent
-		fill.BackgroundTransparency = 1 - W.AccentAlpha * (enabled and 1 or 0.45)
+		local a = W.AccentAlpha * (enabled and 1 or 0.45)
+		fill.BackgroundTransparency = 1 - a
+		fillStroke.Color = T.TextDim
+		fillStroke.Transparency = LowContrast(T.SliderTrack:Lerp(W.Accent, a), T.SliderTrack) and 0.3 or 1
 		knob.BackgroundColor3 = T.KnobFill
 		ks.Color = enabled and T.KnobStroke or T.KnobStrokeOff
 	end
@@ -905,7 +859,7 @@ local function AddSlider(W, S, o)
 		local changed = v ~= value
 		value = v
 		el.Value = v
-		Layout()
+		Layout(true)
 		if changed and not silent then
 			el._fire(v)
 		elseif el.Flag then
@@ -1206,7 +1160,7 @@ local function AddButton(W, S, o)
 		box.BackgroundColor3 = T.DropdownBg
 		boxStroke.Color = enabled and T.DropdownBorder or T.DropdownBorderOff
 		tile.BackgroundColor3 = T.CardBg:Lerp(o.IconColor or W.Accent, 0.22 * a)
-		icon.ImageColor3 = o.IconColor or W.Accent
+		icon.ImageColor3 = o.IconColor or W.AccentOn("DropdownBg")
 		icon.ImageTransparency = 1 - a
 		titleLbl.TextColor3 = enabled and T.TextGray or T.TextDim
 		descLbl.TextColor3 = T.TextDim
@@ -1685,6 +1639,7 @@ local function BuildWatermark(W, cfg)
 		Detail = cfg.Detail or cfg.Text or "internal",
 		Version = cfg.Version or ("v" .. Library.Version),
 		Provider = cfg.Provider,
+		ToggleOnClick = cfg.ToggleOnClick ~= false,
 		Opacity = 1,
 		ShowIcons = true,
 	}
@@ -1708,7 +1663,11 @@ local function BuildWatermark(W, cfg)
 	local stroke = Stroke(frame, WHITE, 1, 0.15)
 	W.Paint(stroke, "Color", "WmStroke")
 	table.insert(WM.Fade, {stroke, "Transparency", 0.15})
-	MakeDraggable(W, frame, frame)
+	MakeDraggable(W, frame, frame, {
+		OnClick = function()
+			if WM.ToggleOnClick and W.Window then W.Window.Toggle() end
+		end,
+	})
 	Create("UIListLayout", {
 		FillDirection = Enum.FillDirection.Horizontal,
 		VerticalAlignment = Enum.VerticalAlignment.Center,
@@ -1731,7 +1690,7 @@ local function BuildWatermark(W, cfg)
 		local grp = Create("Frame", {Size = UDim2.fromOffset(16, 12), BackgroundTransparency = 1, LayoutOrder = nx(), Parent = frame})
 		local ic = CreateIcon(grp, iconSpec, 12, UDim2.fromOffset(0, 0))
 		W.Bind(function(T, accent)
-			ic.ImageColor3 = colorKey == "Accent" and accent or T[colorKey]
+			ic.ImageColor3 = colorKey == "Accent" and W.AccentOn("WmBg") or T[colorKey]
 		end, ic)
 		table.insert(WM.Fade, {ic, "ImageTransparency", 0})
 		table.insert(WM.IconGroups, grp)
@@ -1844,6 +1803,7 @@ local function BuildWatermark(W, cfg)
 		if t.Detail then ApplyIcon(WM.DetailItem.icon, t.Detail) end
 	end)
 	Method(api, "SetPosition", function(p) frame.Position = p end)
+	Method(api, "SetToggleOnClick", function(b) WM.ToggleOnClick = b ~= false end)
 	return api
 end
 
@@ -1925,7 +1885,8 @@ local function BuildShell(W)
 	local Holder = Create("Frame", {
 		Name = "Window",
 		Size = UDim2.fromOffset(WIN_W, WIN_H),
-		Position = UDim2.new(0.5, -WIN_W / 2, 0.5, -WIN_H / 2),
+		AnchorPoint = Vector2.new(0.5, 0.5), -- UIScale масштабирует вокруг AnchorPoint -> от центра
+		Position = UDim2.fromScale(0.5, 0.5),
 		BackgroundTransparency = 1,
 		Parent = W.Gui,
 	})
@@ -2170,73 +2131,111 @@ local function BuildNavigation(W)
 	end
 
 	function W.RefreshAccentIcons()
+		local c = W.AccentOn("TileBg")
 		for _, ic in ipairs(W.AccentIcons) do
-			ic.ImageColor3 = W.Accent
+			ic.ImageColor3 = c
 			ic.ImageTransparency = 1 - W.AccentAlpha
 		end
 	end
 
-	local LastSub = nil
-	function W.BuildSubTabs(instant)
-		for _, ch in ipairs(W.SubHolder:GetChildren()) do
-			if ch:IsA("GuiObject") then ch:Destroy() end
-		end
-		local tab = W.Nav.main
-		if tab == "settings" or #tab.Subs == 0 then return end
-		local cur = tab.CurSub
-		local animate = (not instant) and LastSub ~= nil and LastSub ~= cur
-		LastSub = cur
+	-- Под-вкладки живут, пока открыта та же вкладка: активная плавно раскрывается
+	-- (ширина, фон, текст), прежняя сворачивается до иконки.
+	local Sub = {tab = nil, count = 0, items = {}}
+	local SUB_TI = TweenInfo.new(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+
+	local function SubWidth(it)
+		local w = it.label.TextBounds.X
+		if w <= 0 then w = TextWidth(it.sub.Name, TEXT) end
+		return math.floor(it.textX + w + 8 + 0.5)
+	end
+
+	local function PaintSub(it, active, animate)
 		local T = W.Theme
-		for i, sub in ipairs(tab.Subs) do
-			local active = sub == cur
-			local b = Create("TextButton", {
-				Size = active and UDim2.new(0, 0, 0, 26) or UDim2.fromOffset(26, 26),
-				AutomaticSize = active and Enum.AutomaticSize.X or Enum.AutomaticSize.None,
-				BackgroundTransparency = active and (animate and 1 or 0) or 1,
-				Text = "",
-				AutoButtonColor = false,
-				LayoutOrder = i,
-				Parent = W.SubHolder,
-			})
-			W.Paint(b, "BackgroundColor3", "TileBg")
-			Corner(b, 5)
-			if active then
-				if animate then Tween(b, TI_FAST, {BackgroundTransparency = 0}) end
-				Create("UIPadding", {PaddingLeft = UDim.new(0, 7), PaddingRight = UDim.new(0, 8), Parent = b})
-				Create("UIListLayout", {
-					FillDirection = Enum.FillDirection.Horizontal,
-					VerticalAlignment = Enum.VerticalAlignment.Center,
-					SortOrder = Enum.SortOrder.LayoutOrder,
-					Padding = UDim.new(0, 6),
-					Parent = b,
+		local props = {
+			Size = active and UDim2.fromOffset(SubWidth(it), 26) or UDim2.fromOffset(26, 26),
+			BackgroundTransparency = active and 0 or 1,
+		}
+		local iconProps = it.icon and {
+			ImageColor3 = active and W.AccentOn("TileBg") or T.NavGray,
+			ImageTransparency = active and (1 - W.AccentAlpha) or 0,
+		}
+		if animate then
+			Tween(it.btn, SUB_TI, props)
+			Tween(it.label, SUB_TI, {TextTransparency = active and 0 or 1})
+			if it.letter then Tween(it.letter, SUB_TI, {TextTransparency = active and 1 or 0}) end
+			if iconProps then Tween(it.icon, SUB_TI, iconProps) end
+		else
+			it.btn.Size, it.btn.BackgroundTransparency = props.Size, props.BackgroundTransparency
+			it.label.TextTransparency = active and 0 or 1
+			if it.letter then it.letter.TextTransparency = active and 1 or 0 end
+			if iconProps then it.icon.ImageColor3, it.icon.ImageTransparency = iconProps.ImageColor3, iconProps.ImageTransparency end
+		end
+		it.label.TextColor3 = T.Text
+		if it.letter then it.letter.TextColor3 = T.NavGray end
+	end
+
+	local function ClearSubs()
+		for _, it in ipairs(Sub.items) do it.btn:Destroy() end
+		table.clear(Sub.items)
+		Sub.tab, Sub.count = nil, 0
+	end
+
+	function W.BuildSubTabs(instant)
+		local tab = W.Nav.main
+		if tab == "settings" or #tab.Subs == 0 then
+			ClearSubs()
+			return
+		end
+		local fresh = Sub.tab ~= tab or Sub.count ~= #tab.Subs
+		if fresh then
+			ClearSubs()
+			Sub.tab, Sub.count = tab, #tab.Subs
+			for i, sub in ipairs(tab.Subs) do
+				local b = Create("TextButton", {
+					Size = UDim2.fromOffset(26, 26),
+					BackgroundTransparency = 1,
+					ClipsDescendants = true,
+					Text = "",
+					AutoButtonColor = false,
+					LayoutOrder = i,
+					Parent = W.SubHolder,
 				})
+				W.Paint(b, "BackgroundColor3", "TileBg")
+				Corner(b, 5)
+				local it = {sub = sub, btn = b, textX = 7}
 				if sub.Icon then
-					local ic = Create("ImageLabel", {Size = UDim2.fromOffset(12, 12), BackgroundTransparency = 1, LayoutOrder = 1, Parent = b})
-					ApplyIcon(ic, sub.Icon)
-					table.insert(W.AccentIcons, ic)
+					it.icon = CreateIcon(b, sub.Icon, 12, UDim2.fromOffset(7, 7), W.Theme.NavGray)
+					it.textX = 25
+				else
+					-- без иконки свернутая вкладка показывает первую букву
+					it.letter = Label(b, tostring(sub.Name):sub(1, 1), {Size = UDim2.fromOffset(26, 26), Align = Enum.TextXAlignment.Center, Weight = "SemiBold"})
 				end
-				local lb = Label(b, sub.Name, {AutoX = true, Size = UDim2.new(0, 0, 1, 0), Color = T.Text})
-				lb.LayoutOrder = 2
-				W.Paint(lb, "TextColor3", "Text")
-				if animate then
-					lb.TextTransparency = 1
-					Tween(lb, TI_FAST, {TextTransparency = 0})
-				end
-			elseif sub.Icon then
-				local ic = CreateIcon(b, sub.Icon, 12, UDim2.new(0.5, -6, 0.5, -6), T.NavGray)
-				W.NavIcon(ic)
-			else
-				-- без иконки неактивная вкладка показывает первую букву
-				local lb = Label(b, tostring(sub.Name):sub(1, 1), {Align = Enum.TextXAlignment.Center, Weight = "SemiBold"})
-				W.Paint(lb, "TextColor3", "NavGray")
+				it.label = Label(b, sub.Name, {Position = UDim2.fromOffset(it.textX, 0), AutoX = true, Size = UDim2.new(0, 0, 1, 0)})
+				it.label:GetPropertyChangedSignal("TextBounds"):Connect(function()
+					if Sub.tab == tab and tab.CurSub == sub then
+						it.btn.Size = UDim2.fromOffset(SubWidth(it), 26)
+					end
+				end)
+				b.MouseButton1Click:Connect(function()
+					if tab.CurSub == sub then return end
+					tab.CurSub = sub
+					W.Navigated = true
+					W.RefreshNav()
+				end)
+				table.insert(Sub.items, it)
+				PaintSub(it, false, false)
 			end
-			b.MouseButton1Click:Connect(function()
-				tab.CurSub = sub
-				W.Navigated = true
-				W.RefreshNav()
-			end)
+		end
+		for _, it in ipairs(Sub.items) do
+			PaintSub(it, it.sub == tab.CurSub, not instant)
 		end
 	end
+
+	-- смена темы/акцента: перекрасить под-вкладки без анимации
+	W.Bind(function()
+		local tab = Sub.tab
+		for _, it in ipairs(Sub.items) do PaintSub(it, tab and it.sub == tab.CurSub, false) end
+	end)
 
 	function W.RefreshNav(instant)
 		if not W.Alive then return end
@@ -2501,6 +2500,12 @@ local function CreateWindow(o)
 		W.PopupOwner = nil
 		if W.PopupLayer then W.PopupLayer.Visible = false end
 	end
+	-- Акцент для элемента на фоне T[bgKey]; если почти сливается — цвет текста темы.
+	function W.AccentOn(bgKey)
+		local bg = W.Theme[bgKey] or W.Theme.CardBg
+		if LowContrast(W.Accent, bg) then return W.Theme.Text end
+		return W.Accent
+	end
 	function W.SetAccent(c, alpha)
 		if typeof(c) == "Color3" then W.Accent = c end
 		if alpha then W.AccentAlpha = math.clamp(alpha, 0, 1) end
@@ -2607,6 +2612,9 @@ local function CreateWindow(o)
 	Method(Window, "SetToggleKey", function(k) W.ToggleKey = k end)
 	Method(Window, "GetToggleKey", function() return W.ToggleKey end)
 	Method(Window, "SetPosition", function(p) W.Holder.Position = p end)
+	Method(Window, "Center", function()
+		Tween(W.Holder, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2.fromScale(0.5, 0.5)})
+	end)
 
 	Method(Window, "AddHeaderButton", function(bo)
 		bo = Opts(bo)
