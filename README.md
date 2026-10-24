@@ -1,15 +1,15 @@
-# ZeninLib v3
+# ZeninLib
 
-UI Library для Roblox, повторяющая эталонное меню Zenin Internal: тёмное окно 480×338 с шапкой, нижними вкладками, под-вкладками в шапке, своей полосой прокрутки, ватермарком и анимациями.
+UI Library для Roblox: тёмное окно 480×338 с шапкой, нижними вкладками, под-вкладками в шапке, своей полосой прокрутки, ватермарком и анимациями.
 
 **Элементы:** `Toggle`, `Slider`, `Dropdown`, `MultiDropdown`, `ColorPicker` (1–4 цвета), `Button` (обычная и карточка). У элементов может быть шестерёнка с панелью настроек.
-**Настройки (шестерёнка)** есть всегда: Theme, Accent Color, UI Scale, Scrollbar Size и ватермарк (Opacity, Show Icons, Details). Туда можно добавлять свои секции.
+**Настройки (шестерёнка)** есть всегда: Theme, Accent Color, UI Scale, Scrollbar Size и ватермарк (Opacity, Show Icons, Details — можно выбрать несколько: Time, FPS, Ping, Product Type). Туда можно добавлять свои секции.
 
 ```lua
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/whereesd0-star/Zenin/main/ZeninLib.lua"))()
 ```
 
-Полный пример, который собирает эталонное меню: [`Example.lua`](Example.lua).
+Полный пример меню: [`Example.lua`](Example.lua).
 
 Все методы можно вызывать и через `:`, и через `.` (`Toggle:Set(true)` == `Toggle.Set(true)`).
 
@@ -25,16 +25,15 @@ local Window = Library:CreateWindow({
     AccentAlpha = 1,
     Scale = 1,                      -- масштаб окна
     ScrollbarSize = 6,              -- 3..24; блоки сужаются под полосу только там, где она нужна
-    MouseWheel = false,             -- true = листать колесом (в эталоне только полосой)
+    MouseWheel = false,             -- true = листать колесом (по умолчанию только полосой)
     ConfigFolder = nil,             -- nil = корень workspace экзекутора, "MyHub" = подпапка
     Configs = true,                 -- кнопка конфигов слева от шестерёнки (по желанию)
     Parent = nil,                   -- по умолчанию gethui() или PlayerGui
     Watermark = {                   -- или false, чтобы скрыть
         Title = "myhub", TitleIcon = "tag",
         Site = "myhub.cc", SiteIcon = "globe",   -- без Site пункт скрыт
-        Detail = "internal", DetailIcon = "monitor",
-        Version = "v1.0",
-        Mode = "Product Type",      -- Time | FPS | Ping | Version | Product Type
+        Detail = "roblox", DetailIcon = "monitor",
+        Modes = {"Product Type"},   -- любые из: Time, FPS, Ping, Product Type
         ToggleOnClick = true,       -- клик по ватермарку открывает/закрывает меню
     },
 })
@@ -42,7 +41,7 @@ local Window = Library:CreateWindow({
 
 ### Логотип
 
-Буква Z из эталона в библиотеке не зашита. Логотип показывается в шапке и в ватермарке:
+Логотип задаётся при создании окна и показывается в шапке и в ватермарке:
 
 | Значение `Logo` | Результат |
 |---|---|
@@ -106,7 +105,7 @@ local Esp = Visuals:AddSection({Name = "ESP"})   -- вкладка без под
 
 - `Tab`: `AddSubTab(o)`, `AddSection(o)`, `Select()`, `SetName(text)`, `SetIcon(icon)`.
 - `SubTab`: `AddSection(o)`, `Select()`.
-- `Section`: `Name` можно не указывать (карточка без заголовка, как в эталоне). `Side = "Left"/"Right"`; если не задан, секция попадает в колонку, где их меньше. Методы `SetTitle`, `SetVisible`, `Destroy`.
+- `Section`: `Name` можно не указывать (карточка без заголовка). `Side = "Left"/"Right"`; если не задан, секция попадает в колонку, где их меньше. Методы `SetTitle`, `SetVisible`, `Destroy`.
 - Если у вкладки есть под-вкладки, страница показывает активную под-вкладку.
 
 Иконки — Lucide-имена (можно списком запасных: `{"crosshair", "target"}`) или `rbxassetid://`.
@@ -176,7 +175,7 @@ local g = Section:AddColorPicker({
 В конфиге цвета хранятся hex-строками.
 
 ### Настройки элемента (шестерёнка)
-У `Toggle`, `Slider`, `Dropdown`, `MultiDropdown` и `ColorPicker` есть `AddSettings`. Рядом с элементом появляется кнопка-шестерёнка; по нажатию открывается панель (как «Font Settings» в оригинале), в которую добавляются любые элементы.
+У `Toggle`, `Slider`, `Dropdown`, `MultiDropdown` и `ColorPicker` есть `AddSettings`. Рядом с элементом появляется кнопка-шестерёнка; по нажатию открывается панель (например «Font Settings»), в которую добавляются любые элементы.
 ```lua
 local font = Section:AddDropdown({Name = "Font", Options = {"Small", "Default"}})
 local fs = font:AddSettings({Title = "Font Settings"})
@@ -188,7 +187,7 @@ fs:AddDropdown({Name = "Style", Options = {"Regular", "Bold"}})
 Дропдаун или пикер цвета внутри панели открываются поверх неё, панель при этом не закрывается. Клик мимо закрывает панель.
 
 ### Button
-Обычная кнопка во всю ширину (как «Reset to Defaults» в оригинале):
+Обычная кнопка во всю ширину:
 ```lua
 Section:AddButton({Name = "Reset to Defaults", Callback = function()
     return "Done"   -- строка на 1.2 сек появится на кнопке
@@ -213,7 +212,7 @@ local b = Section:AddCardButton({
 
 ## Ватермарк
 
-`Window.Watermark`: `SetVisible`, `Toggle`, `SetTitle`, `SetSite` (пустая строка скрывает пункт), `SetDetail` (текст для режима Product Type), `SetVersion`, `SetMode`, `GetMode`, `SetOpacity(0..1)`, `SetIconsVisible`, `SetIcons({Title, Site, Detail})`, `SetPosition`, `SetToggleOnClick(bool)`, `SetProvider(function(mode) return "text" end)` для своего текста.
+`Window.Watermark`: `SetVisible`, `Toggle`, `SetTitle`, `SetSite` (пустая строка скрывает пункт), `SetDetail` (текст для режима Product Type), `SetModes({...})`, `GetModes()`, `SetOpacity(0..1)`, `SetIconsVisible`, `SetIcons({Title, Site, Detail})`, `SetPosition`, `SetToggleOnClick(bool)`, `SetProvider(function(mode) return "text" end)` для своего текста.
 
 Клик по ватермарку открывает и закрывает меню (это основная кнопка). Перетаскивание ватермарка клик не засчитывает.
 

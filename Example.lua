@@ -1,8 +1,8 @@
--- Пример: эталонное меню Zenin Internal, собранное на ZeninLib.
+-- Пример меню на ZeninLib.
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/whereesd0-star/Zenin/main/ZeninLib.lua"))()
 
 local Window = Library:CreateWindow({
-	Title = "Zenin Internal",
+	Title = "Zenin Roblox",
 	Logo = "Z", -- буква/текст; или "zap" (Lucide-иконка); или "rbxassetid://123" (картинка)
 	ToggleKey = Enum.KeyCode.RightShift,
 	Configs = true, -- кнопка конфигов слева от шестерёнки
@@ -10,8 +10,7 @@ local Window = Library:CreateWindow({
 	Watermark = {
 		Title = "zenin",
 		Site = "zenin.cc",
-		Detail = "internal",
-		Version = "v2.4",
+		Detail = "roblox",
 	},
 })
 
