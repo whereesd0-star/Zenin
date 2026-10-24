@@ -1,14 +1,3 @@
---[[
-	Zenin UI Library
-
-	Элементы: Toggle, Slider, Dropdown, MultiDropdown, ColorPicker, Button.
-	Настройки (шестерёнка) встроены всегда: тема, акцент, размер меню, скроллбар, ватермарк.
-	Полная документация: README.md
-
-	local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/whereesd0-star/Zenin/main/ZeninLib.lua"))()
-	local Window = Library:CreateWindow({Title = "My Hub", Logo = "M"})
-]]
-
 local Library = {
 	Flags = {},
 	Options = {},
@@ -16,7 +5,7 @@ local Library = {
 	ThemeOrder = {},
 	IconsUrl = "https://raw.githubusercontent.com/whereesd0-star/Icons/refs/heads/main/Icons.lua%20(3).txt",
 	IconsCache = "zenin_lucide_icons.lua",
-	ConfigFolder = nil, -- nil = корень workspace экзекутора; строка = подпапка в workspace
+	ConfigFolder = nil,
 	GuiName = "ZeninUI",
 	ActiveWindow = nil,
 }
@@ -31,7 +20,6 @@ local TextService = game:GetService("TextService")
 
 local LocalPlayer = Players.LocalPlayer
 
--- Методы работают и через ":" и через "." (obj:Set(v) == obj.Set(v)).
 local function Method(obj, name, fn)
 	obj[name] = function(first, ...)
 		if first == obj then
@@ -69,9 +57,6 @@ local function IndexOf(t, v)
 	return nil
 end
 
--- ============================================================================
--- ТЕМЫ
--- ============================================================================
 local function rgb(r, g, b) return Color3.fromRGB(r, g, b) end
 
 Library.Themes.Dark = {
@@ -93,7 +78,6 @@ Library.ThemeOrder[1] = "Dark"
 
 local ThemeHooks = {}
 
--- Новая тема = Dark + переопределённые цвета. Сразу появляется в Settings -> Theme.
 local function AddTheme(name, tokens)
 	local t = {}
 	for k, v in pairs(Library.Themes.Dark) do t[k] = v end
@@ -123,9 +107,6 @@ AddTheme("Light", {
 	WmDetailIcon = rgb(90, 90, 100),
 })
 
--- ============================================================================
--- ИКОНКИ (Lucide) + картинки
--- ============================================================================
 local Icons, IconsTried
 
 local function LoadIcons()
@@ -183,7 +164,6 @@ local function ResolveIcon(name)
 	return nil
 end
 
--- spec: имя Lucide-иконки, список имён (первое найденное), rbxassetid://... или число (asset id)
 local function ApplyIcon(img, spec)
 	if spec == nil or spec == false then
 		img.Image = ""
@@ -219,9 +199,6 @@ Method(Library, "GetIcon", function(name)
 	}
 end)
 
--- ============================================================================
--- УТИЛИТЫ
--- ============================================================================
 local WIN_W, WIN_H = 480, 338
 local HEADER_H, BOTTOM_H = 36, 35
 local BODY_H = WIN_H - HEADER_H - BOTTOM_H
@@ -273,7 +250,6 @@ local function Create(class, props)
 	return obj
 end
 
--- Скругления: окно 6, карточки 4, поля/кнопки/попапы 3, плитки вкладок 2.
 local function Corner(parent, r)
 	return Create("UICorner", {CornerRadius = UDim.new(0, r), Parent = parent})
 end
@@ -361,8 +337,6 @@ local function FromHex(hex)
 	return Color3.fromRGB(r, g, b)
 end
 
--- Перетаскивание через общий диспетчер окна: порог 4px (клик не двигает), без задержки,
--- без ограничений по краям экрана. opts.OnClick вызывается на клик без перетаскивания.
 local function MakeDraggable(W, handle, target, opts)
 	opts = opts or {}
 	local THRESH = 4
@@ -397,7 +371,6 @@ local function MakeDraggable(W, handle, target, opts)
 	end)
 end
 
--- Шахматка под альфой (w и h кратны sq)
 local CHECK_LIGHT, CHECK_DARK = rgb(206, 206, 206), rgb(132, 132, 132)
 local function Checker(parent, x, y, w, h, sq)
 	local base = Create("Frame", {
@@ -423,9 +396,6 @@ local function Checker(parent, x, y, w, h, sq)
 	return base
 end
 
--- ============================================================================
--- ЛОГОТИП: своя буква/текст, Lucide-иконка или картинка
--- ============================================================================
 local function NormalizeLogo(spec, title)
 	if spec == nil or spec == false then
 		local first = tostring(title or "Z"):match("[%w]") or "Z"
@@ -479,9 +449,6 @@ local function CreateLogo(W, parent, spec, size, textSize)
 	return box, fades
 end
 
--- ============================================================================
--- БАЗА ЭЛЕМЕНТА
--- ============================================================================
 local function NewElement(W, S, kind, o, height)
 	S.Order = S.Order + 1
 	local row = Create("Frame", {
@@ -502,7 +469,6 @@ local function NewElement(W, S, kind, o, height)
 	local listeners = {}
 	el._apply = function() end
 
-	-- зависимые элементы (DependsOn) обновляются и при тихом Set
 	el._deps = {}
 	function el._sync(value)
 		if el.Flag then Library.Flags[el.Flag] = value end
@@ -531,7 +497,6 @@ local function NewElement(W, S, kind, o, height)
 		if not el.Visible then W.ClosePopupOf(el) end
 	end)
 	Method(el, "IsVisible", function() return el.Visible end)
-	-- Элемент активен только когда other (обычно Toggle) включён; invert = наоборот.
 	Method(el, "DependsOn", function(other, invert)
 		local function Upd(v)
 			if type(v) == "table" then
@@ -578,13 +543,9 @@ local function Finish(el, o)
 	return el
 end
 
--- ============================================================================
--- ШЕСТЕРЁНКА НАСТРОЕК ЭЛЕМЕНТА
--- ============================================================================
 local ElementApi
 local PANEL_W = 228
 
--- place() освобождает место в строке элемента и возвращает размер и позицию шестерёнки.
 local function AttachSettings(W, el, place)
 	Method(el, "AddSettings", function(so)
 		if el.Settings then return el.Settings end
@@ -721,9 +682,6 @@ local function AttachSettings(W, el, place)
 	end)
 end
 
--- ============================================================================
--- ПОПАП СПИСКА (Dropdown / MultiDropdown)
--- ============================================================================
 local function OpenList(W, owner, btn, options, isSelected, onPick, multi)
 	if not W.PreparePopup(owner, btn) then return end
 	local T = W.Theme
@@ -766,10 +724,6 @@ local function OpenList(W, owner, btn, options, isSelected, onPick, multi)
 		local sel = isSelected(it.opt)
 		it.btn.TextColor3 = sel and W.Accent or T.Text
 		ApplyFont(it.btn, sel and "SemiBold" or "Medium")
-		if it.check then
-			it.check.Visible = sel
-			it.check.ImageColor3 = W.Accent
-		end
 	end
 
 	if #options == 0 then
@@ -789,11 +743,8 @@ local function OpenList(W, owner, btn, options, isSelected, onPick, multi)
 			LayoutOrder = i,
 			Parent = list,
 		})
-		Create("UIPadding", {PaddingLeft = UDim.new(0, 7), PaddingRight = UDim.new(0, multi and 22 or 7), Parent = ob})
+		Create("UIPadding", {PaddingLeft = UDim.new(0, 7), PaddingRight = UDim.new(0, 7), Parent = ob})
 		local it = {opt = opt, btn = ob}
-		if multi then
-			it.check = CreateIcon(ob, {"check"}, 12, UDim2.new(1, 5, 0.5, -6), W.Accent)
-		end
 		table.insert(items, it)
 		Paint(it)
 		ob.MouseButton1Click:Connect(function()
@@ -810,9 +761,6 @@ local function OpenList(W, owner, btn, options, isSelected, onPick, multi)
 	Tween(popup, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.fromOffset(w, totalH)})
 end
 
--- ============================================================================
--- ЭЛЕМЕНТЫ
--- ============================================================================
 local function AddToggle(W, S, o)
 	o = Opts(o)
 	local el, row = NewElement(W, S, "Toggle", o, 21)
@@ -1229,7 +1177,6 @@ local function AddDropdown(W, S, o, multi)
 	return Finish(el, o)
 end
 
--- Кнопка-карточка (как бывшая Telegram): иконка + заголовок (+описание) + кнопка действия справа.
 local function AddCardButton(W, S, o)
 	o = Opts(o)
 	local cb = o.Callback
@@ -1328,7 +1275,6 @@ local function AddCardButton(W, S, o)
 	Method(el, "SetIconColor", function(c) o.IconColor = c el._apply() end)
 
 	Method(el, "SetCallback", function(fn) cb = fn end)
-	-- Callback может вернуть строку: она на 1.2 сек покажется на кнопке (например "Copied").
 	Method(el, "Fire", function()
 		if not el.Enabled then return end
 		local res = SafeCall(cb)
@@ -1344,7 +1290,6 @@ local function AddCardButton(W, S, o)
 	return el
 end
 
--- Модалка выбора цвета (SV + Hue + Alpha), кладётся в стек попапов.
 local function OpenColorModal(W, owner, anchor, color, alpha, onChange)
 	local T = W.Theme
 	local h, s, v = color:ToHSV()
@@ -1422,7 +1367,6 @@ local function OpenColorModal(W, owner, anchor, color, alpha, onChange)
 	})
 	local alphaHit = Create("Frame", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Active = true, ZIndex = 9, Parent = alphaBar})
 
-	-- Маркер: ромб, обрезанный рамкой 3x6 до треугольника.
 	local function Marker(x, pointRight)
 		local clip = Create("Frame", {
 			Size = UDim2.fromOffset(3, 6),
@@ -1501,7 +1445,6 @@ local function OpenColorModal(W, owner, anchor, color, alpha, onChange)
 	W.PushPopup(modal, owner)
 end
 
--- Встроенный пикер акцента (только для Settings).
 local function AccentPicker(W, S, labelText)
 	local el, row = NewElement(W, S, "AccentPicker", {}, 25)
 	local icon = CreateIcon(row, {"palette"}, 12, UDim2.new(0, -1.5, 0.5, -6))
@@ -1529,7 +1472,6 @@ local function AccentPicker(W, S, labelText)
 	return el
 end
 
--- ColorPicker: от 1 до 4 цветов в одной строке (например, градиент).
 local MAX_COLORS = 4
 local function AddColorPicker(W, S, o)
 	o = Opts(o)
@@ -1605,7 +1547,6 @@ local function AddColorPicker(W, S, o)
 		end)
 	end
 
-	-- Set(Color3 | {Color3...}, alpha | {alpha...}, silent)
 	Method(el, "Set", function(v, a, silent)
 		if typeof(v) == "Color3" then v = {v} end
 		if type(v) ~= "table" then return end
@@ -1631,7 +1572,6 @@ local function AddColorPicker(W, S, o)
 	end)
 	Method(el, "GetCount", function() return n end)
 	Method(el, "SetName", function(t) lbl.Text = tostring(t) end)
-	-- для конфигов: цвета храним hex-строками
 	function el._serialize()
 		local out = {}
 		for i = 1, n do out[i] = {ToHex(colors[i]), alphas[i]} end
@@ -1657,7 +1597,6 @@ local function AddColorPicker(W, S, o)
 	return Finish(el, o)
 end
 
--- Обычная кнопка во всю ширину.
 local function AddPlainButton(W, S, o)
 	o = Opts(o)
 	local cb = o.Callback
@@ -1717,7 +1656,6 @@ end
 
 local ELEMENT_KINDS = {"Toggle", "Slider", "Dropdown", "MultiDropdown", "Button", "CardButton", "ColorPicker"}
 
--- Методы добавления элементов для секции или панели настроек (S.Content — контейнер со списком).
 function ElementApi(W, S)
 	Method(S, "AddToggle", function(x) return AddToggle(W, S, x) end)
 	Method(S, "AddSlider", function(x) return AddSlider(W, S, x) end)
@@ -1725,7 +1663,6 @@ function ElementApi(W, S)
 	Method(S, "AddMultiDropdown", function(x) return AddDropdown(W, S, x, true) end)
 	Method(S, "AddColorPicker", function(x) return AddColorPicker(W, S, x) end)
 	Method(S, "AddCardButton", function(x) return AddCardButton(W, S, x) end)
-	-- с Icon / Description / ButtonText — карточка, иначе обычная кнопка
 	Method(S, "AddButton", function(x)
 		x = Opts(x)
 		if x.Icon or x.Description or x.Desc or x.ButtonText then return AddCardButton(W, S, x) end
@@ -1735,7 +1672,6 @@ function ElementApi(W, S)
 		S[k] = S["Add" .. k]
 		S["Create" .. k] = S["Add" .. k]
 	end
-	-- служебный ряд произвольной высоты (встроенные страницы)
 	function S._raw(h)
 		S.Order = S.Order + 1
 		return Create("Frame", {Size = UDim2.new(1, 0, 0, h), BackgroundTransparency = 1, LayoutOrder = S.Order, Parent = S.Content})
@@ -1743,9 +1679,6 @@ function ElementApi(W, S)
 	return S
 end
 
--- ============================================================================
--- СЕКЦИИ И СТРАНИЦЫ
--- ============================================================================
 local function NewSection(W, page, o)
 	o = Opts(o)
 	local side = o.Side
@@ -1879,8 +1812,6 @@ local function NewPage(W, full)
 			step = nil
 		end
 	end
-	-- Плавная прокрутка: экспоненциальное сглаживание к цели.
-	-- RenderStepped подключён только пока контент едет, затем отключается.
 	function page.ScrollTo(y, instant)
 		goal = math.clamp(tonumber(y) or 0, 0, MaxScroll())
 		if instant then
@@ -1902,7 +1833,6 @@ local function NewPage(W, full)
 		page.canvas = h
 		scroll.CanvasSize = UDim2.fromOffset(0, h)
 		goal = math.clamp(goal, 0, MaxScroll())
-		-- блоки сужаются под полосу только когда она реально нужна
 		local need = h - BODY_H > 1
 		if need ~= page.needBar then
 			page.needBar = need
@@ -1942,7 +1872,6 @@ local function NewPage(W, full)
 				ThumbColor()
 			end
 		elseif MaxScroll() > 1 and not W.Drag then
-			-- клик по дорожке: страница в сторону клика
 			local dir = (input.Position.Y < ty) and -1 or 1
 			local from = step and goal or scroll.CanvasPosition.Y
 			page.ScrollTo(from + dir * BODY_H * 0.9)
@@ -1966,8 +1895,6 @@ local function NewPage(W, full)
 	end
 	page.Left = Column()
 	page.Right = full and page.Left or Column()
-	-- С полосой правый край контента = 9px левее неё (при толщине 6 это 456).
-	-- Без полосы (контент влезает) блоки не сужаются.
 	function page.LayoutColumns()
 		local right = 456
 		if page.needBar then right = math.min(456, BAR_RIGHT - (W.BarW + 1) - 9) end
@@ -1995,9 +1922,6 @@ local function AttachSections(W, api, page)
 	return api
 end
 
--- ============================================================================
--- ВАТЕРМАРК
--- ============================================================================
 local function BuildWatermark(W, cfg)
 	if cfg == false then cfg = {Enabled = false} end
 	cfg = cfg or {}
@@ -2085,7 +2009,6 @@ local function BuildWatermark(W, cfg)
 	WM.TitleItem = Item(cfg.TitleIcon or "tag", "Accent", cfg.Title or W.Title)
 	WM.SiteSpacer = Spacer(13)
 	WM.SiteItem = Item(cfg.SiteIcon or "globe", "WmSiteIcon", cfg.Site or "")
-	-- Details: по пункту на каждый выбранный режим (Time / FPS / Ping / Product Type).
 	local detailSep = {Spacer(8.5), Divider(), Spacer(3.5)}
 	WM.Details = {}
 	for _, mode in ipairs(DETAIL_MODES) do
@@ -2236,7 +2159,6 @@ local function BuildWatermark(W, cfg)
 		WM.Provider = fn
 		WM.UpdateDetails()
 	end)
-	-- режимы: строка или список ("Time", "FPS", "Ping", "Product Type")
 	Method(api, "SetModes", function(m)
 		if type(m) == "string" then m = {m} end
 		if W.WmDetails then W.WmDetails.Set(m) else WM.SetModes(m) end
@@ -2265,9 +2187,6 @@ local function BuildWatermark(W, cfg)
 	return api
 end
 
--- ============================================================================
--- УВЕДОМЛЕНИЯ
--- ============================================================================
 local function Notify(W, o)
 	if not W.Alive then return nil end
 	if type(o) == "string" then o = {Content = o} end
@@ -2310,7 +2229,6 @@ local function Notify(W, o)
 		c.TextWrapped = true
 		c.LayoutOrder = 2
 	end
-	-- полоса таймера живёт в нижнем отступе карточки (хост нулевой высоты в конце списка)
 	local barHost = Create("Frame", {Size = UDim2.new(1, 0, 0, 0), BackgroundTransparency = 1, LayoutOrder = 3, Parent = card})
 	local bar = Create("Frame", {
 		Size = UDim2.new(1, 0, 0, 2),
@@ -2337,14 +2255,11 @@ local function Notify(W, o)
 	return {Close = Close}
 end
 
--- ============================================================================
--- ОКНО
--- ============================================================================
 local function BuildShell(W)
 	local Holder = Create("Frame", {
 		Name = "Window",
 		Size = UDim2.fromOffset(WIN_W, WIN_H),
-		AnchorPoint = Vector2.new(0.5, 0.5), -- UIScale масштабирует вокруг AnchorPoint -> от центра
+		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
 		BackgroundTransparency = 1,
 		Parent = W.Gui,
@@ -2357,7 +2272,6 @@ local function BuildShell(W)
 	Corner(Main, 6)
 	W.Main = Main
 
-	-- Header: скруглён сверху, снизу квадратная заливка; градиент подкрашен акцентом слева.
 	local Header = Create("Frame", {
 		Size = UDim2.new(1, 0, 0, HEADER_H),
 		BackgroundColor3 = WHITE,
@@ -2431,7 +2345,6 @@ local function BuildShell(W)
 	W.GearIcon = CreateIcon(SetBtn, {"settings", "cog"}, 12, UDim2.new(0.5, -6, 0.5, -6))
 	W.NavIcon(W.GearIcon)
 
-	-- ширина 0 + AnchorPoint справа: кнопки раскладываются вручную влево от правого края
 	W.SubHolder = Create("Frame", {
 		AnchorPoint = Vector2.new(1, 0.5),
 		Size = UDim2.fromOffset(0, 26),
@@ -2447,7 +2360,6 @@ local function BuildShell(W)
 	Corner(W.SubIndicator, 2)
 	W.Paint(W.SubIndicator, "BackgroundColor3", "TileBg")
 
-	-- Bottom bar
 	local BottomBar = Create("Frame", {
 		Size = UDim2.new(1, 0, 0, BOTTOM_H),
 		Position = UDim2.new(0, 0, 1, -BOTTOM_H),
@@ -2554,7 +2466,6 @@ local function BuildNavigation(W)
 		return m.Page
 	end
 
-	-- Порядок страниц для направления анимации (вкладки слева направо, настройки в конце).
 	local function OrderOf(page)
 		if page == nil then return 0 end
 		if page == W.SettingsPage then return 1e6 end
@@ -2568,8 +2479,6 @@ local function BuildNavigation(W)
 		return 0
 	end
 
-	-- Смена содержимого: старая страница уходит в сторону и гаснет, новая выезжает
-	-- с противоположной стороны (по направлению вкладки) и проявляется.
 	local ActiveTweens = {}
 	local SwitchToken = 0
 	local SLIDE = 18
@@ -2626,8 +2535,6 @@ local function BuildNavigation(W)
 		end
 	end
 
-	-- Под-вкладки живут, пока открыта та же вкладка. Плашка активной вкладки общая:
-	-- при переключении она переезжает и накрывает новую вкладку, та раскрывается, старая сворачивается.
 	local Sub = {tab = nil, count = 0, items = {}}
 	local SUB_TI = TweenInfo.new(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 	local SUB_GAP = 5
@@ -2714,7 +2621,6 @@ local function BuildNavigation(W)
 					it.icon = CreateIcon(b, sub.Icon, 12, UDim2.fromOffset(7, 7), W.Theme.NavGray)
 					it.textX = 25
 				else
-					-- без иконки свёрнутая вкладка показывает первую букву
 					it.letter = Label(b, tostring(sub.Name):sub(1, 1), {Size = UDim2.fromOffset(26, 26), Align = Enum.TextXAlignment.Center, Weight = "SemiBold"})
 				end
 				it.label = Label(b, sub.Name, {Position = UDim2.fromOffset(it.textX, 0), AutoX = true, Size = UDim2.new(0, 0, 1, 0)})
@@ -2789,7 +2695,6 @@ local function BuildNavigation(W)
 		W.RefreshAccentIcons()
 	end
 
-	-- Перекраска навигации при смене темы/акцента без закрытия попапов.
 	W.Bind(function(T)
 		for _, t in ipairs(W.Tabs) do
 			t.Label.TextColor3 = (W.Nav.main == t) and T.Text or T.NavGray
@@ -2947,7 +2852,6 @@ local function BuildSettings(W, o)
 	return api
 end
 
--- Страница конфигов (кнопка слева от шестерёнки): Actions + Config List.
 local function BuildConfigs(W, Window)
 	local page = NewPage(W, true)
 	W.ConfigPage = page
@@ -2973,7 +2877,6 @@ local function BuildConfigs(W, Window)
 		Window.Notify({Title = "Configs", Content = text, Icon = {"file-text", "file"}, Duration = 2.5})
 	end
 
-	-- ---------- Actions ----------
 	local actions = NewSection(W, page, {Name = "Actions"})
 	local box = Create("TextBox", {
 		Size = UDim2.fromScale(1, 1),
@@ -3034,7 +2937,6 @@ local function BuildConfigs(W, Window)
 		return b
 	end
 
-	-- ---------- Config List ----------
 	local list = NewSection(W, page, {Name = "Config List"})
 	local activeLbl = Label(list._raw(16), "Active: None")
 	W.Paint(activeLbl, "TextColor3", "TextGray")
@@ -3172,8 +3074,6 @@ local function CreateWindow(o)
 	W.LogoSpec = NormalizeLogo(o.Logo or o.Icon, W.Title)
 	LoadIcons()
 
-	-- Подписки на тему/акцент. owner = инстанс: когда он уничтожен (Parent == nil),
-	-- подписка выкидывается при ближайшем Prune (удаление элементов/секций, смена темы).
 	function W.Bind(fn, owner)
 		table.insert(W.Listeners, {fn = fn, owner = owner})
 		fn(W.Theme, W.Accent, W.AccentAlpha)
@@ -3195,7 +3095,6 @@ local function CreateWindow(o)
 	function W.Paint(obj, prop, key)
 		W.Bind(function(T) obj[prop] = T[key] end, obj)
 	end
-	-- Серые иконки навигации (кроме активных, которые красятся акцентом).
 	function W.NavIcon(ic)
 		W.Bind(function(T)
 			if not IndexOf(W.AccentIcons, ic) then ic.ImageColor3 = T.NavGray end
@@ -3206,11 +3105,7 @@ local function CreateWindow(o)
 		table.insert(W.Conns, c)
 		return c
 	end
-	-- Единственная пара глобальных подключений ввода на окно: перетаскивание окна/ватермарка,
-	-- слайдеры, скроллбары и пикер цвета регистрируют здесь активный drag, а не свои соединения.
 	W.Drag = nil
-	-- Если InputEnded потерялся (отпустили за окном игры, alt-tab), прежний drag зависает.
-	-- Новое нажатие тем же способом значит, что старое уже закончилось.
 	local function Stale(d, input)
 		if d.input == input then return false end
 		if d.input.UserInputType == Enum.UserInputType.Touch then
@@ -3247,9 +3142,6 @@ local function CreateWindow(o)
 		if d.finish then SafeCall(d.finish, input, false) end
 	end)
 
-	-- Стек попапов: у каждого уровня свой «ловец» клика снаружи (на весь экран) под попапом.
-	-- Клик мимо закрывает этот уровень и всё выше; попап, открытый из другого попапа
-	-- (дропдаун в панели настроек), кладётся поверх него.
 	function W.ClosePopupsFrom(level)
 		W.CancelDrag("popup")
 		for i = #W.Popups, math.max(level, 1), -1 do
@@ -3277,7 +3169,6 @@ local function CreateWindow(o)
 		local i = W.PopupOf(owner)
 		if i then W.ClosePopupsFrom(i) end
 	end
-	-- false = попап этого владельца уже был открыт и теперь закрыт (повторное нажатие).
 	function W.PreparePopup(owner, anchor)
 		local i = W.PopupOf(owner)
 		if i then
@@ -3340,7 +3231,6 @@ local function CreateWindow(o)
 		end
 	end
 
-	-- ScreenGui
 	local parent = o.Parent
 	if not parent then
 		local ok, hui = pcall(function() return gethui and gethui() end)
@@ -3371,7 +3261,6 @@ local function CreateWindow(o)
 		end
 	end)
 
-	-- ======================== публичный API окна ========================
 	local Window = {Library = Library, Settings = settingsApi}
 	W.Window = Window
 	Window.Watermark = W.WatermarkApi
@@ -3455,7 +3344,6 @@ local function CreateWindow(o)
 	Method(Window, "Notify", function(x) return Notify(W, x) end)
 	Method(Window, "ClosePopups", function() W.ClosePopup() end)
 
-	-- Конфиги
 	Method(Window, "GetConfig", function()
 		local data = {Flags = {}, Accent = ToHex(W.Accent), AccentAlpha = W.AccentAlpha}
 		for _, el in ipairs(W.Elements) do
@@ -3521,7 +3409,6 @@ local function CreateWindow(o)
 		if not listfiles then return out end
 		local files
 		local f = Folder()
-		-- корень workspace экзекуторы принимают по-разному
 		for _, dir in ipairs(f and {f} or {"", ".", "./"}) do
 			local ok, res = pcall(listfiles, dir)
 			if ok and type(res) == "table" then
@@ -3588,7 +3475,6 @@ local function CreateWindow(o)
 		end
 		for _, fn in ipairs(W.UnloadCallbacks) do SafeCall(fn) end
 		W.Gui:Destroy()
-		-- отпускаем все ссылки на инстансы и замыкания, чтобы GC собрал окно целиком
 		W.Listeners = {}
 		for _, t in ipairs({W.Elements, W.Pages, W.Tabs, W.HeaderButtons, W.AccentIcons, W.UnloadCallbacks, W.Popups, W.LogoHooks}) do
 			table.clear(t)
