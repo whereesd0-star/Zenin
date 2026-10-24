@@ -1,16 +1,13 @@
-# ZeninLib
+ZeninLib
 
-UI Library для Roblox.
+A UI library for Roblox.
 
-```lua
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/whereesd0-star/Zenin/main/ZeninLib.lua"))()
-```
 
-Полный пример: [`Example.lua`](Example.lua).
+Full example: ""Example.lua"" (Example.lua).
 
-## Окно
+Window
 
-```lua
 local Window = Library:CreateWindow({
     Title = "My Hub",
     Logo = "M",
@@ -25,42 +22,38 @@ local Window = Library:CreateWindow({
         Modes = {"Product Type"},
     },
 })
-```
 
-| Опция | Что делает |
-|---|---|
-| `Title` | название в шапке |
-| `Logo` | буква (`"M"`), иконка (`"zap"`) или картинка (`"rbxassetid://123"`) |
-| `ToggleKey` | клавиша открытия меню |
-| `Theme` | `"Dark"` или `"Light"` |
-| `Accent` | основной цвет |
-| `Configs` | кнопка конфигов рядом с настройками |
-| `ConfigFolder` | папка для конфигов (по умолчанию workspace) |
-| `ScrollbarSize` | толщина полосы прокрутки, 3–24 |
-| `Watermark` | настройки ватермарка, `false` чтобы скрыть |
+Option| Description
+"Title"| Title displayed in the header
+"Logo"| A letter (""M""), an icon (""zap""), or an image (""rbxassetid://123"")
+"ToggleKey"| Key used to open or close the menu
+"Theme"| ""Dark"" or ""Light""
+"Accent"| Primary accent color
+"Configs"| Adds a config button next to the settings button
+"ConfigFolder"| Folder used to store configs (defaults to "workspace")
+"ScrollbarSize"| Scrollbar thickness, from 3 to 24
+"Watermark"| Watermark settings; set to "false" to hide it
 
-Клик по ватермарку открывает и закрывает меню.
+Clicking the watermark opens or closes the menu.
 
-Настройки (шестерёнка в шапке) есть всегда: тема, цвет, размер меню, полоса прокрутки, ватермарк.
+Settings (the gear icon in the header) are always available and include the theme, accent color, menu scale, scrollbar, and watermark.
 
-## Вкладки и секции
+Tabs and Sections
 
-```lua
 local Combat = Window:AddTab({Name = "Combat", Icon = "crosshair"})
 local Aimbot = Combat:AddSubTab({Name = "Aimbot", Icon = "crosshair"})
 local Section = Aimbot:AddSection({Name = "Target", Side = "Left"})
-```
 
-Если у вкладки нет под-вкладок, секции добавляются прямо в неё: `Tab:AddSection(...)`.
+If a tab has no subtabs, sections can be added directly to it using "Tab:AddSection(...)".
 
-Свою секцию в настройках: `Window.Settings:AddSection({Name = "Info"})`.
+To add a custom section to the settings menu, use "Window.Settings:AddSection({Name = "Info"})".
 
-## Элементы
+Elements
 
-У всех элементов есть `Name`, `Flag`, `Default`, `Callback`.
-Значение по флагу: `Library.Flags["MyFlag"]`.
+All elements support "Name", "Flag", "Default", and "Callback".
 
-```lua
+Access an element's value by its flag using "Library.Flags["MyFlag"]".
+
 Section:AddToggle({Name = "Aimbot", Default = false, Flag = "Aimbot", Callback = function(v) end})
 
 Section:AddSlider({Name = "FOV", Min = 0, Max = 100, Default = 50, Step = 1, Suffix = "%", Flag = "FOV"})
@@ -78,52 +71,45 @@ Section:AddCardButton({Name = "Telegram", Icon = "send", ButtonText = "Open", Ca
     setclipboard("https://t.me/...")
     return "Copied"
 end})
-```
 
-- В ColorPicker можно передать до 4 цветов.
-- Если `Callback` кнопки вернёт текст, он ненадолго появится на кнопке.
-- `DependsOn = toggle`: элемент работает только когда тоггл включён.
+- "ColorPicker" supports up to 4 colors.
+- If a button's "Callback" returns a string, it will briefly appear on the button.
+- "DependsOn = toggle": the element only works while the specified toggle is enabled.
 
-Методы элементов: `Set(value)`, `Get()`, `SetEnabled(bool)`, `SetVisible(bool)`, `OnChanged(fn)`, `Destroy()`.
-У дропдаунов ещё есть `SetOptions(list)`.
+Element methods: "Set(value)", "Get()", "SetEnabled(bool)", "SetVisible(bool)", "OnChanged(fn)", "Destroy()".
 
-### Шестерёнка у элемента
+Dropdowns also support "SetOptions(list)".
 
-```lua
+Element Settings (Gear Icon)
+
 local font = Section:AddDropdown({Name = "Font", Options = {"Small", "Big"}})
 local settings = font:AddSettings({Title = "Font Settings"})
 settings:AddSlider({Name = "Size", Min = 6, Max = 20, Default = 10})
-```
 
-Работает у Toggle, Slider, Dropdown, MultiDropdown и ColorPicker.
+This feature is available for Toggle, Slider, Dropdown, MultiDropdown, and ColorPicker elements.
 
-## Окно — методы
+Window Methods
 
-| Метод | Что делает |
-|---|---|
-| `Show()`, `Hide()`, `Toggle()` | показать / скрыть меню |
-| `SetTheme(name)`, `SetAccent(color)` | тема и цвет |
-| `SetScale(n)`, `Center()` | размер и позиция |
-| `SetLogo(value)`, `SetTitle(text)` | логотип и название |
-| `Notify({Title, Content, Duration})` | уведомление |
-| `SaveConfig(name)`, `LoadConfig(name)`, `ListConfigs()`, `DeleteConfig(name)` | конфиги |
-| `Destroy()` | выгрузить меню |
+Method| Description
+"Show()", "Hide()", "Toggle()"| Show, hide, or toggle the menu
+"SetTheme(name)", "SetAccent(color)"| Set the theme and accent color
+"SetScale(n)", "Center()"| Set the menu scale and center its position
+"SetLogo(value)", "SetTitle(text)"| Set the logo and title
+"Notify({Title, Content, Duration})"| Display a notification
+"SaveConfig(name)", "LoadConfig(name)", "ListConfigs()", "DeleteConfig(name)"| Manage configs
+"Destroy()"| Unload the menu
 
-## Ватермарк
+Watermark
 
-```lua
 Window.Watermark:SetTitle("myhub")
 Window.Watermark:SetSite("myhub.cc")
 Window.Watermark:SetDetail("roblox")
 Window.Watermark:SetModes({"Time", "FPS", "Ping"})
 Window.Watermark:SetVisible(false)
-```
 
-Режимы: `Time`, `FPS`, `Ping`, `Product Type`. Можно включать несколько сразу.
+Available modes: "Time", "FPS", "Ping", and "Product Type". Multiple modes can be enabled simultaneously.
 
-## Своя тема
+Custom Themes
 
-```lua
 Library:AddTheme("Ocean", {WindowBg = Color3.fromRGB(10, 16, 22)})
 Window:SetTheme("Ocean")
-```
