@@ -127,30 +127,3 @@ Modes: `Time`, `FPS`, `Ping`, `Product Type`. You can turn on several at once.
 Library:AddTheme("Ocean", {WindowBg = Color3.fromRGB(10, 16, 22)})
 Window:SetTheme("Ocean")
 ```
-
-
-## Rochess
-
-`Rochess.lua` is a chess assistant built on ZeninLib. It requires the Roblox game's
-`ReplicatedStorage.Chess` and `ChessClient` modules, plus HTTP access and `loadstring`.
-
-- **Main**: best move with evaluation and alternatives (**Play**), game status and clocks
-  (**Copy** position), autoplay, move arrows, preset (Legit / Raj / Custom), practice game.
-- **Engine**: analysis source, move choice, rating, noise and blunder chance.
-- **Automation**: think-time range and input humanization.
-- Theme, accent, and menu size use ZeninLib's built-in settings. Settings are saved with
-  ZeninLib configs in the `RoCheese` folder; **Settings → RoCheese → Unload** stops the script.
-
-Hotkeys: **PageUp / +** menu, **End** autoplay, **Home** arrows, **PageDown** analysis
-source, **Insert** copy position.
-
-### Regression checks
-
-```sh
-npm ci
-npm test
-```
-
-The tests run extracted script logic in a mocked Lua runtime: stale analysis, engine
-failures, move validation, concurrent move attempts, and the ZeninLib control bindings.
-They do not replace live verification in Roblox.
