@@ -4,7 +4,7 @@ local Window = Library:CreateWindow({
 	Title = "Zenin Roblox",
 	Logo = "Z",
 	ToggleKey = Enum.KeyCode.RightShift,
-	Configs = true,
+	Configs = {Folder = "Zenin/Example", Key = "change me"},
 	Accent = Color3.fromRGB(255, 89, 89),
 	Watermark = {
 		Title = "zenin",

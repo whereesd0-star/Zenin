@@ -34,8 +34,7 @@ local Window = Library:CreateWindow({
 | `ToggleKey` | key that opens the menu |
 | `Theme` | `"Dark"` or `"Light"` |
 | `Accent` | main color |
-| `Configs` | configs button next to settings |
-| `ConfigFolder` | folder for configs (workspace by default) |
+| `Configs` | `true` or a table of config options (see below) |
 | `ScrollbarSize` | scrollbar thickness, 3–24 |
 | `Watermark` | watermark settings, `false` to hide it |
 
@@ -106,8 +105,44 @@ Works on Toggle, Slider, Dropdown, MultiDropdown and ColorPicker.
 | `SetScale(n)`, `Center()` | size and position |
 | `SetLogo(value)`, `SetTitle(text)` | logo and name |
 | `Notify({Title, Content, Duration})` | notification |
-| `SaveConfig(name)`, `LoadConfig(name)`, `ListConfigs()`, `DeleteConfig(name)` | configs |
 | `Destroy()` | unload the menu |
+
+## Configs
+
+```lua
+local Window = Library:CreateWindow({
+    Title = "My Hub",
+    Configs = {
+        Folder = "MyHub",        -- own folder for this hub, nested works too: "Zenin/MyHub"
+        Key = "my secret key",   -- turns on encryption
+        BindToUser = false,      -- true = only this Roblox account can open the configs
+    },
+})
+```
+
+Everything with a `Flag` is saved, plus theme, accent, menu size and watermark.
+With a `Key`, files are encrypted (ChaCha20 + HMAC-SHA256). Without the key they can't be read or edited.
+Old plain configs still load.
+
+The configs page (button next to settings) can create, load, save, delete, copy and import configs.
+The star marks a config to load automatically on the next run.
+
+| Method | What it does |
+|---|---|
+| `Window.Configs:Save(name)` / `Load(name)` / `Delete(name)` | basic actions |
+| `Rename(old, new)`, `Duplicate(name)`, `Exists(name)`, `List()` | manage files |
+| `Export(name?)` / `Import(text, name?)` | share configs as text |
+| `SetAutoLoad(name)`, `GetAutoLoad()` | autoload |
+| `Reset()` | all elements back to their default values |
+| `SetFolder(path)`, `SetEncryption(on, key)` | change folder or encryption |
+| `Ignore(flag, ...)` | don't save these flags |
+| `Register(key, get, set)` | save your own data in configs |
+| `OnSave(fn)`, `OnLoad(fn)` | run code on save / load |
+| `GetActive()` | name of the loaded config |
+
+```lua
+Window.Configs:Register("Waypoints", function() return myWaypoints end, function(v) myWaypoints = v end)
+```
 
 ## Watermark
 
