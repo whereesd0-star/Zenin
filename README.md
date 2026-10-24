@@ -26,7 +26,7 @@ local Window = Library:CreateWindow({
     Scale = 1,                      -- масштаб окна
     ScrollbarSize = 6,
     MouseWheel = false,             -- true = листать колесом (в эталоне только полосой)
-    ConfigFolder = "MyHub",
+    ConfigFolder = nil,             -- nil = корень workspace экзекутора, "MyHub" = подпапка
     Configs = true,                 -- кнопка конфигов слева от шестерёнки (по желанию)
     Parent = nil,                   -- по умолчанию gethui() или PlayerGui
     Watermark = {                   -- или false, чтобы скрыть
@@ -74,7 +74,7 @@ local Window = Library:CreateWindow({
 | `Notify({Title, Content, Icon, Duration})` | уведомление справа снизу |
 | `EnableConfigs({Folder})` | включить страницу конфигов (то же, что `Configs = true`); возвращает страницу, в неё можно добавить свои секции |
 | `SelectConfigs()`, `RefreshConfigs()`, `GetActiveConfig()` | страница конфигов |
-| `SaveConfig(name)`, `LoadConfig(name)`, `DeleteConfig(name)`, `ListConfigs()` | файлы `<папка>/<name>.cfg` (все элементы с `Flag` + акцент + настройки) |
+| `SaveConfig(name)`, `LoadConfig(name)`, `DeleteConfig(name)`, `ListConfigs()` | файлы `<name>.cfg` в workspace экзекутора (или `<ConfigFolder>/<name>.cfg`) (все элементы с `Flag` + акцент + настройки) |
 | `GetStats()` | число подписок, соединений, элементов, страниц и инстансов (для контроля памяти) |
 | `GetConfig()`, `ApplyConfig(table)` | конфиг таблицей |
 | `OnUnload(fn)`, `Destroy()` / `Unload()` | выгрузка (отключает все соединения) |
