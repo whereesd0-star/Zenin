@@ -17,7 +17,7 @@ local Library = {
 	ThemeOrder = {},
 	IconsUrl = "https://raw.githubusercontent.com/whereesd0-star/Icons/refs/heads/main/Icons.lua%20(3).txt",
 	IconsCache = "zenin_lucide_icons.lua",
-	ConfigFolder = "ZeninConfigs",
+	ConfigFolder = nil, -- nil = корень workspace экзекутора; строка = подпапка в workspace
 	GuiName = "ZeninUI",
 	ActiveWindow = nil,
 }
@@ -273,6 +273,7 @@ local function Create(class, props)
 	return obj
 end
 
+-- Скругления как в оригинале: окно/карточки 4, поля/кнопки/попапы 3, плитки вкладок 2.
 local function Corner(parent, r)
 	return Create("UICorner", {CornerRadius = UDim.new(0, r), Parent = parent})
 end
@@ -591,7 +592,7 @@ local function OpenList(W, owner, btn, options, isSelected, onPick, multi)
 		ZIndex = 35,
 		Parent = W.PopupLayer,
 	})
-	Corner(popup, 5)
+	Corner(popup, 3)
 	Stroke(popup, T.DropdownBorder, 1)
 	local scrolls = #options > maxVisible
 	local list = Create("ScrollingFrame", {
@@ -889,7 +890,7 @@ local function AddDropdown(W, S, o, multi)
 		AutoButtonColor = false,
 		Parent = row,
 	})
-	Corner(btn, 5)
+	Corner(btn, 3)
 	local bs = Stroke(btn, WHITE, 1)
 	local valLbl = Label(btn, "", {Position = UDim2.fromOffset(7, 0), Size = UDim2.new(1, -24, 1, 0), Truncate = true})
 	local chev = CreateIcon(btn, {"chevron-down"}, 12, UDim2.new(1, -17, 0.5, -6))
@@ -1064,10 +1065,10 @@ local function AddButton(W, S, o)
 	local iconSpec = o.Icon
 
 	local box = Create("Frame", {Size = UDim2.fromScale(1, 1), BorderSizePixel = 0, Parent = row})
-	Corner(box, 5)
+	Corner(box, 3)
 	local boxStroke = Stroke(box, WHITE, 1)
 	local tile = Create("Frame", {Size = UDim2.fromOffset(25, 25), Position = UDim2.fromOffset(8, 7.5), BorderSizePixel = 0, Parent = box})
-	Corner(tile, 5)
+	Corner(tile, 2)
 	local icon = CreateIcon(tile, iconSpec, 12, UDim2.new(0.5, -6, 0.5, -6))
 	local titleLbl = Label(box, title, {Truncate = true})
 	local descLbl = Label(box, desc or "", {TextSize = 10, Truncate = true})
@@ -1082,7 +1083,7 @@ local function AddButton(W, S, o)
 		AutoButtonColor = false,
 		Parent = box,
 	})
-	Corner(action, 5)
+	Corner(action, 3)
 	local actionStroke = Stroke(action, WHITE, 1)
 	local hovering = false
 
@@ -1213,7 +1214,7 @@ local function AccentPicker(W, S, labelText)
 			ZIndex = 35,
 			Parent = W.PopupLayer,
 		})
-		Corner(modal, 6)
+		Corner(modal, 4)
 		Stroke(modal, T.BoxBorder, 1)
 
 		local svBox = Create("Frame", {
@@ -1381,7 +1382,7 @@ local function NewSection(W, page, o)
 		Parent = col.frame,
 	})
 	W.Paint(card, "BackgroundColor3", "CardBg")
-	Corner(card, 6)
+	Corner(card, 4)
 	local titleLbl
 	if titleText then
 		titleLbl = Label(card, titleText, {
@@ -1806,7 +1807,7 @@ local function Notify(W, o)
 		BorderSizePixel = 0,
 		Parent = holder,
 	})
-	Corner(card, 6)
+	Corner(card, 4)
 	Stroke(card, T.DropdownBorder, 1)
 	Create("UIPadding", {
 		PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10),
@@ -1871,7 +1872,7 @@ local function BuildShell(W)
 
 	local Main = Create("Frame", {Size = UDim2.fromScale(1, 1), BorderSizePixel = 0, Active = true, Parent = Holder})
 	W.Paint(Main, "BackgroundColor3", "WindowBg")
-	Corner(Main, 8)
+	Corner(Main, 4)
 	W.Main = Main
 
 	-- Header: скруглён сверху, снизу квадратная заливка; градиент подкрашен акцентом слева.
@@ -1883,7 +1884,7 @@ local function BuildShell(W)
 		ZIndex = 8,
 		Parent = Main,
 	})
-	Corner(Header, 8)
+	Corner(Header, 4)
 	local HeaderFill = Create("Frame", {
 		Size = UDim2.new(1, 0, 0, HEADER_H / 2),
 		Position = UDim2.new(0, 0, 0, HEADER_H / 2),
@@ -1943,7 +1944,7 @@ local function BuildShell(W)
 		Parent = Header,
 	})
 	W.Paint(SetBtn, "BackgroundColor3", "TileBg")
-	Corner(SetBtn, 5)
+	Corner(SetBtn, 2)
 	W.SetBtn = SetBtn
 	W.GearIcon = CreateIcon(SetBtn, {"settings", "cog"}, 12, UDim2.new(0.5, -6, 0.5, -6))
 	W.NavIcon(W.GearIcon)
@@ -1961,7 +1962,7 @@ local function BuildShell(W)
 		BorderSizePixel = 0,
 		Parent = W.SubHolder,
 	})
-	Corner(W.SubIndicator, 5)
+	Corner(W.SubIndicator, 2)
 	W.Paint(W.SubIndicator, "BackgroundColor3", "TileBg")
 
 	-- Bottom bar
@@ -1973,7 +1974,7 @@ local function BuildShell(W)
 		Parent = Main,
 	})
 	W.Paint(BottomBar, "BackgroundColor3", "BarBg")
-	Corner(BottomBar, 8)
+	Corner(BottomBar, 4)
 	local bf = Create("Frame", {Size = UDim2.new(1, 0, 0, BOTTOM_H / 2), BorderSizePixel = 0, Parent = BottomBar})
 	W.Paint(bf, "BackgroundColor3", "BarBg")
 	local bl = Create("Frame", {Size = UDim2.new(1, 0, 0, 1), BorderSizePixel = 0, Parent = BottomBar})
@@ -2317,7 +2318,7 @@ local function AddTab(W, o)
 		Parent = btn,
 	})
 	W.Paint(tile, "BackgroundColor3", "TileBg")
-	Corner(tile, 5)
+	Corner(tile, 2)
 	local content = Create("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
@@ -2454,7 +2455,7 @@ local function BuildConfigs(W, Window)
 		Parent = W.Header,
 	})
 	W.Paint(btn, "BackgroundColor3", "TileBg")
-	Corner(btn, 5)
+	Corner(btn, 2)
 	W.CfgBtn = btn
 	W.CfgIcon = CreateIcon(btn, {"file-text", "file"}, 12, UDim2.new(0.5, -6, 0.5, -6))
 	W.NavIcon(W.CfgIcon)
@@ -2478,7 +2479,7 @@ local function BuildConfigs(W, Window)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = actions._raw(25),
 	})
-	Corner(box, 5)
+	Corner(box, 3)
 	local boxStroke = Stroke(box, WHITE, 1)
 	Create("UIPadding", {PaddingLeft = UDim.new(0, 9), PaddingRight = UDim.new(0, 9), Parent = box})
 	W.Bind(function(T)
@@ -2490,7 +2491,7 @@ local function BuildConfigs(W, Window)
 
 	local function WideButton(sec, text, icon, fn)
 		local b = Create("TextButton", {Size = UDim2.fromScale(1, 1), BorderSizePixel = 0, Text = "", AutoButtonColor = false, Parent = sec._raw(27)})
-		Corner(b, 5)
+		Corner(b, 3)
 		local st = Stroke(b, WHITE, 1)
 		local content = Create("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
@@ -2557,16 +2558,16 @@ local function BuildConfigs(W, Window)
 
 	local function Item(i, name)
 		local row = Create("Frame", {Size = UDim2.new(1, 0, 0, 45), BorderSizePixel = 0, LayoutOrder = i, Parent = holder})
-		Corner(row, 5)
+		Corner(row, 3)
 		W.Paint(row, "BackgroundColor3", "DropdownBg")
-		local title = Label(row, name .. ".cfg", {Position = UDim2.fromOffset(14, 7), Size = UDim2.new(1, -120, 0, 16), Weight = "SemiBold", Truncate = true})
-		local idx = Label(row, tostring(i), {Position = UDim2.fromOffset(14, 24), Size = UDim2.new(1, -120, 0, 14), TextSize = 10})
+		local title = Label(row, name .. ".cfg", {Position = UDim2.fromOffset(14, 7), Size = UDim2.new(1, -110, 0, 16), Weight = "SemiBold", Truncate = true})
+		local idx = Label(row, tostring(i), {Position = UDim2.fromOffset(14, 24), Size = UDim2.new(1, -110, 0, 14), TextSize = 10})
 		W.Bind(function(T, accent)
 			title.TextColor3 = (state.active == name) and accent or T.Text
 			idx.TextColor3 = T.TextDim
 		end, row)
 
-		IconButton(row, -112, {"download", "import"}, function()
+		IconButton(row, -92, {"download", "import"}, function()
 			local ok, err = Window.LoadConfig(name)
 			if ok then
 				state.active = name
@@ -2576,12 +2577,12 @@ local function BuildConfigs(W, Window)
 				Note("Load failed: " .. tostring(err))
 			end
 		end)
-		IconButton(row, -82, {"save"}, function()
+		IconButton(row, -64, {"save"}, function()
 			local ok, err = Window.SaveConfig(name)
 			Note(ok and ("Saved " .. name .. ".cfg") or ("Save failed: " .. tostring(err)))
 		end)
 		-- удаление в два клика: первый подсвечивает корзину на 2 секунды
-		IconButton(row, -52, {"trash-2", "trash"}, function(st)
+		IconButton(row, -36, {"trash-2", "trash"}, function(st)
 			if not st.armed then
 				st.armed = true
 				st.Paint()
@@ -2909,26 +2910,35 @@ local function CreateWindow(o)
 	end)
 	local function Folder()
 		local f = W.ConfigFolder
-		if isfolder and makefolder and not isfolder(f) then pcall(makefolder, f) end
+		if f == nil or f == "" then return nil end
+		if isfolder and makefolder then
+			local ok, exists = pcall(isfolder, f)
+			if not (ok and exists) then pcall(makefolder, f) end
+		end
 		return f
+	end
+	local function Path(name)
+		local f = Folder()
+		local file = tostring(name or "default") .. ".cfg"
+		return f and (f .. "/" .. file) or file
 	end
 	Method(Window, "SaveConfig", function(name)
 		if not writefile then return false, "writefile unsupported" end
 		local ok, err = pcall(function()
-			writefile(Folder() .. "/" .. tostring(name or "default") .. ".cfg", HttpService:JSONEncode(Window.GetConfig()))
+			writefile(Path(name), HttpService:JSONEncode(Window.GetConfig()))
 		end)
 		return ok, err
 	end)
 	Method(Window, "LoadConfig", function(name)
 		if not (readfile and isfile) then return false, "readfile unsupported" end
-		local path = Folder() .. "/" .. tostring(name or "default") .. ".cfg"
+		local path = Path(name)
 		if not isfile(path) then return false, "not found" end
 		local ok, data = pcall(function() return HttpService:JSONDecode(readfile(path)) end)
 		if not ok then return false, data end
 		return Window.ApplyConfig(data)
 	end)
 	Method(Window, "DeleteConfig", function(name)
-		local path = Folder() .. "/" .. tostring(name or "default") .. ".cfg"
+		local path = Path(name)
 		if delfile and isfile and isfile(path) then
 			pcall(delfile, path)
 			return true
@@ -2938,11 +2948,24 @@ local function CreateWindow(o)
 	Method(Window, "ListConfigs", function()
 		local out = {}
 		if not listfiles then return out end
-		local ok, files = pcall(listfiles, Folder())
-		if not ok then return out end
-		for _, f in ipairs(files) do
-			local n = tostring(f):match("([^/\\]+)%.cfg$")
-			if n then table.insert(out, n) end
+		local files
+		local f = Folder()
+		-- корень workspace экзекуторы принимают по-разному
+		for _, dir in ipairs(f and {f} or {"", ".", "./"}) do
+			local ok, res = pcall(listfiles, dir)
+			if ok and type(res) == "table" then
+				files = res
+				break
+			end
+		end
+		if not files then return out end
+		local seen = {}
+		for _, file in ipairs(files) do
+			local n = tostring(file):match("([^/\\]+)%.cfg$")
+			if n and not seen[n] then
+				seen[n] = true
+				table.insert(out, n)
+			end
 		end
 		table.sort(out)
 		return out
