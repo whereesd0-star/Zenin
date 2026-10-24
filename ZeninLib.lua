@@ -273,7 +273,7 @@ local function Create(class, props)
 	return obj
 end
 
--- Скругления как в оригинале: окно/карточки 4, поля/кнопки/попапы 3, плитки вкладок 2.
+-- Скругления как в оригинале: окно 6, карточки 4, поля/кнопки/попапы 3, плитки вкладок 2.
 local function Corner(parent, r)
 	return Create("UICorner", {CornerRadius = UDim.new(0, r), Parent = parent})
 end
@@ -380,7 +380,7 @@ local function MakeDraggable(W, handle, target, opts)
 	end
 
 	W.Connect(handle.InputBegan, function(input)
-		if not IsClickOrTouch(input) or W.Drag then return end
+		if not IsClickOrTouch(input) then return end
 		local origin = Vector2.new(input.Position.X, input.Position.Y)
 		if OverButton(origin) then return end
 		local startPos, started = target.Position, false
@@ -501,8 +501,14 @@ local function NewElement(W, S, kind, o, height)
 	local listeners = {}
 	el._apply = function() end
 
-	function el._fire(value, extra)
+	-- зависимые элементы (DependsOn) обновляются и при тихом Set
+	el._deps = {}
+	function el._sync(value)
 		if el.Flag then Library.Flags[el.Flag] = value end
+		for _, fn in ipairs(el._deps) do SafeCall(fn, value) end
+	end
+	function el._fire(value, extra)
+		el._sync(value)
 		SafeCall(o.Callback, value, extra)
 		for _, fn in ipairs(listeners) do SafeCall(fn, value, extra) end
 	end
@@ -535,7 +541,9 @@ local function NewElement(W, S, kind, o, height)
 			if invert then v = not v end
 			el.SetEnabled(v)
 		end
-		other.OnChanged(Upd)
+		table.insert(other._deps, Upd)
+		el._depOn = el._depOn or {}
+		table.insert(el._depOn, {other, Upd})
 		Upd(other.Get())
 		return el
 	end)
@@ -547,6 +555,12 @@ local function NewElement(W, S, kind, o, height)
 		end
 		local i = IndexOf(W.Elements, el)
 		if i then table.remove(W.Elements, i) end
+		for _, link in ipairs(el._depOn or {}) do
+			local j = IndexOf(link[1]._deps, link[2])
+			if j then table.remove(link[1]._deps, j) end
+		end
+		el._depOn = nil
+		table.clear(el._deps)
 		row:Destroy()
 		W.Prune()
 	end)
@@ -719,8 +733,8 @@ local function AddToggle(W, S, o)
 		el._apply(true)
 		if changed and not silent then
 			el._fire(v)
-		elseif el.Flag then
-			Library.Flags[el.Flag] = v
+		else
+			el._sync(v)
 		end
 	end)
 	Method(el, "Get", function() return state end)
@@ -819,8 +833,8 @@ local function AddSlider(W, S, o)
 		Layout(true)
 		if changed and not silent then
 			el._fire(v)
-		elseif el.Flag then
-			Library.Flags[el.Flag] = v
+		else
+			el._sync(v)
 		end
 	end
 
@@ -991,8 +1005,8 @@ local function AddDropdown(W, S, o, multi)
 		Sync()
 		if Key() ~= before and not silent then
 			Fire()
-		elseif el.Flag then
-			Library.Flags[el.Flag] = el.Value
+		else
+			el._sync(el.Value)
 		end
 	end)
 	Method(el, "Get", function()
@@ -1015,7 +1029,11 @@ local function AddDropdown(W, S, o, multi)
 			value = options[1]
 		end
 		Sync()
-		if Key() ~= before and not silent then Fire() end
+		if Key() ~= before and not silent then
+			Fire()
+		else
+			el._sync(el.Value)
+		end
 	end)
 	el.Refresh = el.SetOptions
 	Method(el, "AddOption", function(opt)
@@ -1155,13 +1173,14 @@ local function AddButton(W, S, o)
 	Method(el, "SetCallback", function(fn) cb = fn end)
 	-- Callback может вернуть строку: она на 1.2 сек покажется на кнопке (например "Copied").
 	Method(el, "Fire", function()
+		if not el.Enabled then return end
 		local res = SafeCall(cb)
 		el._fire(nil)
 		if type(res) == "string" then el.Flash(res) end
 	end)
 
 	action.MouseButton1Click:Connect(function()
-		if el.Enabled then el.Fire() end
+		el.Fire()
 	end)
 	if o.DependsOn then el.DependsOn(o.DependsOn, o.InvertDependency) end
 	el._apply()
@@ -1487,7 +1506,7 @@ local function NewPage(W, full)
 		local show = scroll.Visible and maxS > 1
 		hit.Visible = show
 		if not show then return end
-		local bw = W.BarW
+		local bw = W.BarW + 1
 		hit.Size = UDim2.fromOffset(bw + 8, TRK_LEN)
 		hit.Position = UDim2.fromOffset(BAR_RIGHT - bw - 4, HEADER_H + TRK_TOP)
 		track.Size = UDim2.new(0, bw, 1, 0)
@@ -1547,18 +1566,20 @@ local function NewPage(W, full)
 	end
 
 	hit.InputBegan:Connect(function(input)
-		if not IsClickOrTouch(input) or W.Drag then return end
+		if not IsClickOrTouch(input) then return end
 		local sc = W.Scale.Scale
 		local ty, th = thumb.AbsolutePosition.Y, thumb.AbsoluteSize.Y
 		if input.Position.Y >= ty and input.Position.Y <= ty + th then
-			dragging = true
-			grabOff = (input.Position.Y - ty) / sc
-			ThumbColor()
-			W.BeginDrag(input, function(i) SetFromMouse(i.Position.Y) end, function()
+			local began = W.BeginDrag(input, function(i) SetFromMouse(i.Position.Y) end, function()
 				dragging = false
 				ThumbColor()
 			end)
-		elseif MaxScroll() > 1 then
+			if began then
+				dragging = true
+				grabOff = (input.Position.Y - ty) / sc
+				ThumbColor()
+			end
+		elseif MaxScroll() > 1 and not W.Drag then
 			-- клик по дорожке: страница в сторону клика
 			local dir = (input.Position.Y < ty) and -1 or 1
 			local from = step and goal or scroll.CanvasPosition.Y
@@ -1571,23 +1592,33 @@ local function NewPage(W, full)
 
 	function page.Recalc()
 		local sc = W.Scale.Scale
-		if sc <= 0 then return end
+		if sc <= 0 or not (page.Left and page.Right) then return end
 		local h = math.max(page.Left.layout.AbsoluteContentSize.Y, page.Right.layout.AbsoluteContentSize.Y) / sc
 		page.SetCanvas(h > 0 and (h + 18) or 0)
 	end
-	local function Column(x, w)
-		local frame = Create("Frame", {Size = UDim2.fromOffset(w, 0), Position = UDim2.fromOffset(x, 9), BackgroundTransparency = 1, Parent = scroll})
+	local function Column()
+		local frame = Create("Frame", {Position = UDim2.fromOffset(9, 9), BackgroundTransparency = 1, Parent = scroll})
 		local layout = Create("UIListLayout", {Padding = UDim.new(0, 9), SortOrder = Enum.SortOrder.LayoutOrder, Parent = frame})
 		layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() page.Recalc() end)
 		return {frame = frame, layout = layout, count = 0}
 	end
-	if full then
-		page.Left = Column(9, 447)
-		page.Right = page.Left
-	else
-		page.Left = Column(9, 219)
-		page.Right = Column(237, 219)
+	page.Left = Column()
+	page.Right = full and page.Left or Column()
+	-- Блоки сужаются под толщину полосы: правый край контента = 9px левее полосы.
+	-- При стандартной толщине (6) это ровно 456, как в оригинале.
+	function page.LayoutColumns()
+		local right = math.min(456, BAR_RIGHT - (W.BarW + 1) - 9)
+		local total = right - 9
+		if full then
+			page.Left.frame.Size = UDim2.fromOffset(total, 0)
+		else
+			local w = math.floor((total - 9) / 2)
+			page.Left.frame.Size = UDim2.fromOffset(w, 0)
+			page.Right.frame.Size = UDim2.fromOffset(w, 0)
+			page.Right.frame.Position = UDim2.fromOffset(right - w, 9)
+		end
 	end
+	page.LayoutColumns()
 
 	table.insert(W.Pages, page)
 	return page
@@ -1788,6 +1819,7 @@ end
 -- УВЕДОМЛЕНИЯ
 -- ============================================================================
 local function Notify(W, o)
+	if not W.Alive then return nil end
 	if type(o) == "string" then o = {Content = o} end
 	o = o or {}
 	local T = W.Theme
@@ -1872,7 +1904,7 @@ local function BuildShell(W)
 
 	local Main = Create("Frame", {Size = UDim2.fromScale(1, 1), BorderSizePixel = 0, Active = true, Parent = Holder})
 	W.Paint(Main, "BackgroundColor3", "WindowBg")
-	Corner(Main, 4)
+	Corner(Main, 6)
 	W.Main = Main
 
 	-- Header: скруглён сверху, снизу квадратная заливка; градиент подкрашен акцентом слева.
@@ -1884,7 +1916,7 @@ local function BuildShell(W)
 		ZIndex = 8,
 		Parent = Main,
 	})
-	Corner(Header, 4)
+	Corner(Header, 6)
 	local HeaderFill = Create("Frame", {
 		Size = UDim2.new(1, 0, 0, HEADER_H / 2),
 		Position = UDim2.new(0, 0, 0, HEADER_H / 2),
@@ -1974,7 +2006,7 @@ local function BuildShell(W)
 		Parent = Main,
 	})
 	W.Paint(BottomBar, "BackgroundColor3", "BarBg")
-	Corner(BottomBar, 4)
+	Corner(BottomBar, 6)
 	local bf = Create("Frame", {Size = UDim2.new(1, 0, 0, BOTTOM_H / 2), BorderSizePixel = 0, Parent = BottomBar})
 	W.Paint(bf, "BackgroundColor3", "BarBg")
 	local bl = Create("Frame", {Size = UDim2.new(1, 0, 0, 1), BorderSizePixel = 0, Parent = BottomBar})
@@ -2413,7 +2445,7 @@ local function BuildSettings(W, o)
 		Callback = function(v) W.SetScale(SCALE_MAP[v] or 1, true) end,
 	})
 	W.ScrollSlider = interface.AddSlider({
-		Name = "Scrollbar Size", Min = 0, Max = 40, Default = W.BarW, Suffix = "px",
+		Name = "Scrollbar Size", Min = 1, Max = 25, Default = W.BarW, Suffix = "px",
 		Flag = "__ZeninScrollbar",
 		Callback = function(v) W.SetBarWidth(v) end,
 	})
@@ -2544,10 +2576,10 @@ local function BuildConfigs(W, Window)
 			Parent = parent,
 		})
 		local ic = CreateIcon(b, icon, 12, UDim2.new(0.5, -6, 0.5, -6))
-		local st = {hover = false, armed = false}
+		local st = {hover = false}
 		function st.Paint()
 			local T = W.Theme
-			ic.ImageColor3 = st.armed and W.Accent or (st.hover and T.Text or T.NavGray)
+			ic.ImageColor3 = st.hover and T.Text or T.NavGray
 		end
 		W.Bind(st.Paint, b)
 		b.MouseEnter:Connect(function() st.hover = true st.Paint() end)
@@ -2581,21 +2613,11 @@ local function BuildConfigs(W, Window)
 			local ok, err = Window.SaveConfig(name)
 			Note(ok and ("Saved " .. name .. ".cfg") or ("Save failed: " .. tostring(err)))
 		end)
-		-- удаление в два клика: первый подсвечивает корзину на 2 секунды
-		IconButton(row, -36, {"trash-2", "trash"}, function(st)
-			if not st.armed then
-				st.armed = true
-				st.Paint()
-				task.delay(2, function()
-					if st.armed then
-						st.armed = false
-						if row.Parent then st.Paint() end
-					end
-				end)
+		IconButton(row, -36, {"trash-2", "trash"}, function()
+			if not Window.DeleteConfig(name) then
+				Note("Delete failed: " .. name .. ".cfg")
 				return
 			end
-			st.armed = false
-			Window.DeleteConfig(name)
 			if state.active == name then state.active = nil end
 			Refresh()
 			Note("Deleted " .. name .. ".cfg")
@@ -2665,7 +2687,7 @@ local function CreateWindow(o)
 		AccentAlpha = o.AccentAlpha or 1,
 		Listeners = {}, Conns = {}, PopupConns = {},
 		Pages = {}, Tabs = {}, Elements = {}, HeaderButtons = {}, AccentIcons = {}, UnloadCallbacks = {},
-		BarW = o.ScrollbarSize or 6,
+		BarW = math.clamp(math.floor(tonumber(o.ScrollbarSize) or 6), 1, 25),
 		WheelScroll = o.MouseWheel == true,
 		ToggleKey = o.ToggleKey or o.Keybind or Enum.KeyCode.RightShift,
 		Nav = {main = "settings"},
@@ -2712,7 +2734,17 @@ local function CreateWindow(o)
 	-- Единственная пара глобальных подключений ввода на окно: перетаскивание окна/ватермарка,
 	-- слайдеры, скроллбары и пикер цвета регистрируют здесь активный drag, а не свои соединения.
 	W.Drag = nil
+	-- Если InputEnded потерялся (отпустили за окном игры, alt-tab), прежний drag зависает.
+	-- Новое нажатие тем же способом значит, что старое уже закончилось.
+	local function Stale(d, input)
+		if d.input == input then return false end
+		if d.input.UserInputType == Enum.UserInputType.Touch then
+			return d.input.UserInputState == Enum.UserInputState.End
+		end
+		return input.UserInputType == d.input.UserInputType
+	end
 	function W.BeginDrag(input, move, finish, tag)
+		if W.Drag and Stale(W.Drag, input) then W.CancelDrag() end
 		if W.Drag then return false end
 		W.Drag = {input = input, move = move, finish = finish, tag = tag}
 		return true
@@ -2773,8 +2805,11 @@ local function CreateWindow(o)
 		end
 	end
 	function W.SetBarWidth(v)
-		W.BarW = math.clamp(math.floor((tonumber(v) or 6) + 0.5), 1, 14)
-		for _, p in ipairs(W.Pages) do p.Update() end
+		W.BarW = math.clamp(math.floor((tonumber(v) or 6) + 0.5), 1, 25)
+		for _, p in ipairs(W.Pages) do
+			p.LayoutColumns()
+			p.Update()
+		end
 	end
 
 	-- ScreenGui
@@ -2932,18 +2967,18 @@ local function CreateWindow(o)
 	Method(Window, "LoadConfig", function(name)
 		if not (readfile and isfile) then return false, "readfile unsupported" end
 		local path = Path(name)
-		if not isfile(path) then return false, "not found" end
+		local okf, exists = pcall(isfile, path)
+		if not (okf and exists) then return false, "not found" end
 		local ok, data = pcall(function() return HttpService:JSONDecode(readfile(path)) end)
 		if not ok then return false, data end
 		return Window.ApplyConfig(data)
 	end)
 	Method(Window, "DeleteConfig", function(name)
 		local path = Path(name)
-		if delfile and isfile and isfile(path) then
-			pcall(delfile, path)
-			return true
-		end
-		return false
+		if not (delfile and isfile) then return false end
+		local okf, exists = pcall(isfile, path)
+		if not (okf and exists) then return false end
+		return (pcall(delfile, path))
 	end)
 	Method(Window, "ListConfigs", function()
 		local out = {}

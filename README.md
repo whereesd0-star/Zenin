@@ -24,7 +24,7 @@ local Window = Library:CreateWindow({
     Accent = Color3.fromRGB(255, 89, 89),
     AccentAlpha = 1,
     Scale = 1,                      -- масштаб окна
-    ScrollbarSize = 6,
+    ScrollbarSize = 6,              -- 1..25; блоки с элементами сужаются под толстую полосу
     MouseWheel = false,             -- true = листать колесом (в эталоне только полосой)
     ConfigFolder = nil,             -- nil = корень workspace экзекутора, "MyHub" = подпапка
     Configs = true,                 -- кнопка конфигов слева от шестерёнки (по желанию)
@@ -83,7 +83,7 @@ local Window = Library:CreateWindow({
 
 `Configs = true` добавляет в шапку кнопку слева от шестерёнки. На её странице:
 - **Actions**: поле «Name (optional)», **Create New** (без имени будет `config_N`, повтор имени получает суффикс `-1`), **Refresh List**;
-- **Config List**: `Active: ...` и список `.cfg` с кнопками загрузить / перезаписать / удалить (удаление в два клика).
+- **Config List**: `Active: ...` и список `.cfg` с кнопками загрузить / перезаписать / удалить.
 
 ## Память
 
