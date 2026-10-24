@@ -1,11 +1,10 @@
--- Пример меню на ZeninLib.
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/whereesd0-star/Zenin/main/ZeninLib.lua"))()
 
 local Window = Library:CreateWindow({
 	Title = "Zenin Roblox",
-	Logo = "Z", -- буква/текст; или "zap" (Lucide-иконка); или "rbxassetid://123" (картинка)
+	Logo = "Z",
 	ToggleKey = Enum.KeyCode.RightShift,
-	Configs = true, -- кнопка конфигов слева от шестерёнки
+	Configs = true,
 	Accent = Color3.fromRGB(255, 89, 89),
 	Watermark = {
 		Title = "zenin",
@@ -14,7 +13,6 @@ local Window = Library:CreateWindow({
 	},
 })
 
--- ===== Combat =====
 local Combat = Window:AddTab({Name = "Combat", Icon = {"crosshair", "target"}})
 
 local Aimbot = Combat:AddSubTab({Name = "Aimbot", Icon = {"crosshair", "target"}})
@@ -83,7 +81,6 @@ end
 Window:AddTab({Name = "Misc", Icon = {"sliders-horizontal", "sliders"}})
 Window:AddTab({Name = "Skins", Icon = "shirt"})
 
--- ===== Своя кнопка в настройках (бывшая Telegram) =====
 local info = Window.Settings:AddSection({Name = "Information", Side = "Right"})
 info:AddButton({
 	Name = "Telegram",
@@ -91,7 +88,7 @@ info:AddButton({
 	ButtonText = "Open",
 	Callback = function()
 		if setclipboard then setclipboard("https://t.me/your_channel") end
-		return "Copied" -- строка на 1.2 сек появится на кнопке
+		return "Copied"
 	end,
 })
 
