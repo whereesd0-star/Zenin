@@ -127,3 +127,32 @@ Modes: `Time`, `FPS`, `Ping`, `Product Type`. You can turn on several at once.
 Library:AddTheme("Ocean", {WindowBg = Color3.fromRGB(10, 16, 22)})
 Window:SetTheme("Ocean")
 ```
+
+
+## Rochess
+
+`Rochess.lua` uses ZeninLib for its engine, automation, appearance, and profile controls.
+It requires the Roblox game's `ReplicatedStorage.Chess` and `ChessClient` modules;
+it is not a standalone chess engine. The UI library is fetched from this repository.
+HTTP access and `loadstring` must be available in the runtime. Profile persistence
+and clipboard support are optional; unavailable file APIs leave profiles in memory.
+
+- **End**: toggle autoplay; **Home**: toggle arrows.
+- **PageUp / +**: toggle the window; **PageDown**: switch analysis source.
+- **Insert**: copy the position and moves when clipboard access is available.
+- Existing profiles remain in `rocheese_profiles_v2.json`.
+
+Analysis results are tied to the session and complete move history, so stale searches
+cannot overwrite the current position. Move dispatch validates legality and uses
+one handler per attempt to avoid duplicate submissions.
+
+### Regression checks
+
+```sh
+npm ci
+npm test
+```
+
+The tests execute extracted script logic in a mocked Lua runtime, covering stale
+analysis, failed engines, move validation, and concurrent move attempts. The script is also syntax-checked with the Lua parser. These checks do not
+replace live verification of the Roblox UI, game modules, or executor APIs.

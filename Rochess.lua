@@ -282,13 +282,14 @@ local function analyseBest(startFen, moves)
 end
 
 -- ranks every continuation of the position, so the 2nd and 3rd arrows have a real order
-local function rankContinuations(startFen, moves, skipUci)
+local function rankContinuations(startFen, moves, skipUci, isCurrent)
 	local engine = buildEngine(startFen, moves)
 	if not engine then
 		return nil
 	end
 	local scored = {}
 	for _, mv in engine:legalMoves() do
+		if isCurrent and not isCurrent() then return nil end
 		local uci = engine:moveToUci(mv)
 		if not skipUci or string.lower(uci) ~= string.lower(skipUci) then
 			local child = buildEngine(startFen, moves)
@@ -297,12 +298,14 @@ local function rankContinuations(startFen, moves, skipUci)
 			end)
 			if ok then
 				local success, cres = pcall(Bot.analyse, child:getFen(), {}, CFG.CHILD_SECONDS, CFG.CHILD_DEPTH)
-                if not success then cres = nil end
-				table.insert(scored, {
-					uci = uci,
-					san = engine:moveToSan(mv),
-					score = tonumber(cres and cres.score) or 0,
-				})
+				local score = success and type(cres) == "table" and tonumber(cres.score)
+				if score and score == score and math.abs(score) < math.huge then
+					table.insert(scored, {
+						uci = uci,
+						san = engine:moveToSan(mv),
+						score = score,
+					})
+				end
 			end
 		end
 	end
@@ -346,29 +349,36 @@ end
 
 local function playUci(uci)
 	local session = App.session
-	if not session or session.over then
+	if not alive() or not session or session.over then
 		return false, "no game"
 	end
-	if not session:isMyTurn() then
-		return false, "not your turn"
+	if not session:isMyTurn() or session.viewPly ~= #session.ucis then
+		return false, "not at your live turn"
 	end
-	local from = Engine.algToIndex64(uci:sub(1, 2))
-	local to = Engine.algToIndex64(uci:sub(3, 4))
-	if not from or not to then
+	if type(uci) ~= "string" then return false, "bad uci" end
+	uci = string.lower(uci)
+	if not uci:match("^[a-h][1-8][a-h][1-8][qrbn]?$") then
 		return false, "bad uci"
 	end
-	local promo = CFG.PROMO[uci:sub(5, 5)] or 0
+	local valid, san = pcall(function()
+		return sanOf(buildEngine(session.startFen, session.ucis), uci)
+	end)
+	if not valid or not san then return false, "illegal move" end
+	local from = Engine.algToIndex64(uci:sub(1, 2))
+	local to = Engine.algToIndex64(uci:sub(3, 4))
+	if not from or not to then return false, "bad uci" end
 	local before = #session.ucis
 	tapInput()
-	local ok = false
-	pcall(function()
-		-- same call a square click makes: local apply + packed move to the server
-		ok = App.onBoardMove(from, to, promo, nil)
+	local ok, result = pcall(function()
+		if type(App.onBoardMove) == "function" then
+			return App.onBoardMove(from, to, CFG.PROMO[uci:sub(5, 5)] or 0, nil)
+		end
+		return App.playMove(uci)
 	end)
-	if not ok or #session.ucis == before then
-		pcall(function()
-			App.playMove(uci)
-		end)
+	-- Never call both handlers: the first may already have sent the move.
+	if not ok then return false, "move handler failed" end
+	if result == false or App.session ~= session or #session.ucis <= before then
+		return false, "move not confirmed"
 	end
 	return true, uci
 end
@@ -383,416 +393,485 @@ local function humanDelay()
 end
 
 local function autopilotTick(session, ply)
-	if not RUNTIME.AUTO then
-		return
-	end
-	if session.over or not session:isMyTurn() then
-		return
-	end
-	if session.viewPly ~= ply or S.busy or not S.best then
-		return
-	end
-	local now = os.clock()
-	if now < S.thinkAt then
-		return
-	end
-	local uci = pickMove(session)
-	if type(uci) ~= "string" then
-		return
-	end
+	if not RUNTIME.AUTO or S.playPending or S.busy or not S.best then return end
+	if session.over or not session:isMyTurn() or session.viewPly ~= ply then return end
+	if os.clock() < math.max(S.thinkAt, S.autoAt) then return end
+	local moves = table.concat(session.ucis, " ")
+	local analysisId = S.analysisId
+	S.playPending = true
 	task.spawn(function()
-		if not alive() then
-			return
-		end
-		if App.session == session and not session.over and session:isMyTurn() then
-			playUci(uci)
-		end
+		local ok, err = pcall(function()
+			local uci = pickMove(session)
+			if alive() and RUNTIME.AUTO and App.session == session
+				and S.analysisId == analysisId and table.concat(session.ucis, " ") == moves then
+				local played, message = playUci(uci)
+				if not played then S.status = message end
+			end
+		end)
+		S.playPending = false
+		S.autoAt = os.clock() + 1
+		if not ok and alive() then S.status = "autoplay failed" end
 	end)
 end
 
 -- gui -------------------------------------------------------------------------------------
 
--- UI: ordinary Frames keep text colors independent of background styling.
 local gui, panel, dot, lastEval
 local rows, btns = {}, {}
-local dragged = false
 local toggleAuto, playNow, copyPosition, refreshButtons, syncDelay, applyPreset, startBotGame
 local setVisible, applyTheme, layoutPanel
-local C_BG = Color3.fromRGB(17, 21, 32)
-local C_IDLE = Color3.fromRGB(35, 42, 60)
-local C_ON = Color3.fromRGB(39, 107, 101)
-local C_RAJ = Color3.fromRGB(113, 66, 99)
-local C_TXT = Color3.fromRGB(240, 244, 255)
-local C_DIM = Color3.fromRGB(161, 173, 195)
-local C_ACC = Color3.fromRGB(126, 177, 255)
-local themes = {
-    Midnight = {bg=Color3.fromRGB(17,21,32), card=Color3.fromRGB(25,31,46), button=Color3.fromRGB(35,43,62), text=Color3.fromRGB(240,244,255), dim=Color3.fromRGB(163,177,200)},
-    Graphite = {bg=Color3.fromRGB(24,24,27), card=Color3.fromRGB(33,33,38), button=Color3.fromRGB(47,47,54), text=Color3.fromRGB(248,248,250), dim=Color3.fromRGB(184,184,196)},
-    Pearl = {bg=Color3.fromRGB(236,240,247), card=Color3.fromRGB(250,252,255), button=Color3.fromRGB(222,229,240), text=Color3.fromRGB(26,36,53), dim=Color3.fromRGB(77,92,116)},
+local C_ACC = Color3.fromRGB(105, 166, 255)
+local accents = {
+    Blue = Color3.fromRGB(105, 166, 255),
+    Mint = Color3.fromRGB(65, 194, 159),
+    Violet = Color3.fromRGB(164, 127, 245),
+    Rose = Color3.fromRGB(235, 117, 157),
 }
-local accents = {Blue=Color3.fromRGB(105,166,255), Mint=Color3.fromRGB(65,194,159), Violet=Color3.fromRGB(164,127,245), Rose=Color3.fromRGB(235,117,157)}
-local themed, activeTweens = {}, setmetatable({}, {__mode="k"})
-local pages, nav = {}, {}
-local currentPage = "Overview"
-local opening = false
-local function animate(object, props, seconds)
-    if activeTweens[object] then activeTweens[object]:Cancel() end
-    local tween = TweenService:Create(object, TweenInfo.new(RUNTIME.ANIMATIONS and (seconds or 0.2) or 0, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), props)
-    activeTweens[object] = tween
-    tween:Play()
-    return tween
-end
-local function role(object, property, name)
-    table.insert(themed, {object, property, name})
-    return object
-end
-local function corner(object, radius)
-    local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(0, radius or 10)
-    c.Parent = object
-end
-local function frame(parent, x, y, w, h, colorRole)
-    local f = Instance.new("Frame")
-    f.BorderSizePixel = 0
-    f.Position, f.Size = UDim2.fromOffset(x,y), UDim2.fromOffset(w,h)
-    f.Parent = parent
-    if colorRole then role(f,"BackgroundColor3",colorRole) else f.BackgroundTransparency = 1 end
-    corner(f,12)
-    return f
-end
-local function label(parent,x,y,w,h,text,size,colorRole)
-    local t = Instance.new("TextLabel")
-    t.BackgroundTransparency = 1
-    t.Position, t.Size = UDim2.fromOffset(x,y), UDim2.fromOffset(w,h)
-    t.Text, t.TextSize = text, size or 13
-    t.Font = Enum.Font.GothamMedium
-    t.TextXAlignment = Enum.TextXAlignment.Left
-    t.TextTruncate = Enum.TextTruncate.AtEnd
-    t.Parent = parent
-    role(t,"TextColor3",colorRole or "text")
-    return t
-end
-local function button(parent,x,y,w,text,callback)
-    local b = Instance.new("TextButton")
-    b.Position, b.Size = UDim2.fromOffset(x,y), UDim2.fromOffset(w,34)
-    b.Text, b.TextSize, b.Font = text, 12, Enum.Font.GothamBold
-    b.TextTruncate = Enum.TextTruncate.AtEnd
-    b.AutoButtonColor, b.BorderSizePixel = false, 0
-    b.Parent = parent
-    corner(b,9)
-    role(b,"BackgroundColor3","button")
-    role(b,"TextColor3","text")
-    local stroke = Instance.new("UIStroke")
-    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    stroke.Transparency = 1
-    stroke.Parent = b
-    role(stroke,"Color","accent")
-    b.MouseEnter:Connect(function() animate(stroke,{Transparency=0.2},0.14) end)
-    b.MouseLeave:Connect(function() animate(stroke,{Transparency=1},0.22) end)
-    b.Activated:Connect(callback)
-    return b
-end
-local function setBtn(b,on,text,onColor)
-    if not b then return end
-    b.Text = text
-    local theme = themes[RUNTIME.THEME] or themes.Midnight
-    animate(b,{BackgroundColor3=on and (onColor or C_ON) or theme.button})
-    b.TextColor3 = on and Color3.fromRGB(255,255,255) or theme.text
-end
-local function page(name, subtitle)
-    local p = frame(panel,160,76,456,344)
-    p.Visible = false
-    label(p,0,0,456,28,name,22)
-    label(p,0,31,456,22,subtitle,11,"dim")
-    pages[name] = p
-    return p
-end
-local function showPage(name)
-    currentPage = name
-    for key,p in pairs(pages) do
-        if activeTweens[p] then activeTweens[p]:Cancel() end
-        p.Visible = key == name
-        if p.Visible then
-            p.Position = UDim2.fromOffset(170,76)
-            animate(p,{Position=UDim2.fromOffset(160,76)},0.24)
-        end
+local themeNames = {"Midnight", "Graphite", "Pearl"}
+local accentNames = {"Blue", "Mint", "Violet", "Rose"}
+local ZENIN_URL = "https://raw.githubusercontent.com/whereesd0-star/Zenin/main/ZeninLib.lua"
+
+local function loadZenin()
+    if type(loadstring) ~= "function" then return nil, "loadstring is unavailable" end
+    local ok, result = pcall(function()
+        local source = game:HttpGet(ZENIN_URL)
+        if type(source) ~= "string" or source == "" then error("download returned an empty response", 0) end
+        local chunk, compileError = loadstring(source)
+        if type(chunk) ~= "function" then error("library compilation failed: " .. tostring(compileError), 0) end
+        return chunk()
+    end)
+    if not ok then return nil, tostring(result) end
+    if type(result) ~= "table" or type(result.CreateWindow) ~= "function" then
+        return nil, "download did not return a ZeninLib library"
     end
-    for key,b in pairs(nav) do setBtn(b,key==name,b.Text) end
+    return result
 end
+
+local Library, libraryError = loadZenin()
+if not Library then
+    warn("[rocheese] ZeninLib could not be loaded from " .. ZENIN_URL .. ": " .. tostring(libraryError))
+end
+
+local function addTheme(name, tokens)
+    if Library and type(Library.AddTheme) == "function" then
+        pcall(function() Library:AddTheme(name, tokens) end)
+    end
+end
+
+addTheme("Midnight", {
+    WindowBg = Color3.fromRGB(17, 21, 32), CardBg = Color3.fromRGB(25, 31, 46),
+    TileBg = Color3.fromRGB(35, 43, 62), DropdownBg = Color3.fromRGB(25, 31, 46),
+    PopupBg = Color3.fromRGB(25, 31, 46), SliderTrack = Color3.fromRGB(35, 43, 62),
+    ToggleOffBg = Color3.fromRGB(35, 43, 62), Text = Color3.fromRGB(240, 244, 255),
+    ValueOff = Color3.fromRGB(163, 177, 200), ScrollTrack = Color3.fromRGB(25, 31, 46),
+    WmBg = Color3.fromRGB(25, 31, 46),
+})
+addTheme("Graphite", {
+    WindowBg = Color3.fromRGB(24, 24, 27), CardBg = Color3.fromRGB(33, 33, 38),
+    TileBg = Color3.fromRGB(47, 47, 54), DropdownBg = Color3.fromRGB(33, 33, 38),
+    PopupBg = Color3.fromRGB(33, 33, 38), SliderTrack = Color3.fromRGB(47, 47, 54),
+    ToggleOffBg = Color3.fromRGB(47, 47, 54), Text = Color3.fromRGB(248, 248, 250),
+    ValueOff = Color3.fromRGB(184, 184, 196), ScrollTrack = Color3.fromRGB(33, 33, 38),
+    WmBg = Color3.fromRGB(33, 33, 38),
+})
+addTheme("Pearl", {
+    WindowBg = Color3.fromRGB(236, 240, 247), CardBg = Color3.fromRGB(250, 252, 255),
+    TileBg = Color3.fromRGB(222, 229, 240), DropdownBg = Color3.fromRGB(250, 252, 255),
+    PopupBg = Color3.fromRGB(250, 252, 255), SliderTrack = Color3.fromRGB(222, 229, 240),
+    ToggleOffBg = Color3.fromRGB(222, 229, 240), Text = Color3.fromRGB(26, 36, 53),
+    ValueOff = Color3.fromRGB(77, 92, 116), ScrollTrack = Color3.fromRGB(222, 229, 240),
+    WmBg = Color3.fromRGB(250, 252, 255),
+})
+
+local uiWindow, controls = nil, {}
+local profilePicker, profileNamePicker, profileNotice
+local profileSelection, profileIds = tostring(store.active), {}
+local userScale, appliedScale = 1, nil
+
+local function elementSet(element, value)
+    if element and type(element.Set) == "function" then
+        pcall(function() element:Set(value, true) end)
+    end
+end
+
+local function elementName(element, value)
+    if element and type(element.SetName) == "function" then
+        pcall(function() element:SetName(value) end)
+    end
+end
+
+local function addReadout(section, key, text)
+    local element = section:AddButton({Name = text, Callback = function() end})
+    rows[key] = setmetatable({}, {
+        __index = function(_, field) if field == "Text" then return text end end,
+        __newindex = function(_, field, value)
+            if field == "Text" then
+                local nextText = tostring(value)
+                if nextText ~= text then
+                    text = nextText
+                    elementName(element, text)
+                end
+            end
+        end,
+    })
+    return rows[key]
+end
+
+local function setProfileNotice(text)
+    if profileNotice then profileNotice.Text = tostring(text) end
+end
+
+local function refreshProfileOptions()
+    if not profilePicker then return end
+    local ids, options, byLabel, labels = {}, {}, {}, {}
+    for id in pairs(store.profiles) do
+        if type(id) == "string" then table.insert(ids, id) end
+    end
+    table.sort(ids, function(a, b)
+        local an = tostring(store.names[a] or ("Profile " .. a))
+        local bn = tostring(store.names[b] or ("Profile " .. b))
+        return an == bn and a < b or an < bn
+    end)
+    for _, id in ipairs(ids) do
+        local label = tostring(store.names[id] or ("Profile " .. id)) .. " [" .. id:sub(1, 8) .. "]"
+        table.insert(options, label)
+        byLabel[label], labels[id] = id, label
+    end
+    profileIds = byLabel
+    profilePicker:SetOptions(options, true)
+    if labels[profileSelection] then
+        profilePicker:Set(labels[profileSelection], true)
+    elseif labels[tostring(store.active)] then
+        profileSelection = tostring(store.active)
+        profilePicker:Set(labels[profileSelection], true)
+    elseif ids[1] then
+        profileSelection = ids[1]
+        profilePicker:Set(labels[profileSelection], true)
+    else
+        profileSelection = nil
+    end
+
+    local nameOptions, taken = {}, {}
+    for id, name in pairs(store.names) do
+        if id ~= profileSelection then taken[name] = true end
+    end
+    if profileSelection and store.names[profileSelection] then
+        table.insert(nameOptions, store.names[profileSelection])
+    end
+    for i = 1, 50 do
+        local name = "Profile " .. i
+        if not taken[name] then table.insert(nameOptions, name) end
+    end
+    profileNamePicker:SetOptions(nameOptions, true)
+    if nameOptions[1] then profileNamePicker:Set(nameOptions[1], true) end
+    if #ids == 0 then
+        setProfileNotice(configNotice .. " / no profiles yet")
+    elseif not store.profiles[profileSelection] then
+        setProfileNotice("Choose a profile or create one")
+    end
+end
+
 local function buildGui()
-    local playerGui = LocalPlayer:WaitForChild("PlayerGui")
-    local old = playerGui:FindFirstChild("RoCheesePanel")
-    if old then old:Destroy() end
-    gui = Instance.new("ScreenGui")
-    gui.Name, gui.ResetOnSpawn, gui.IgnoreGuiInset = "RoCheesePanel", false, true
-    gui.DisplayOrder = 999
-    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    gui.Parent = playerGui
-    panel = frame(gui,30,80,640,480,"bg")
-    panel.Name, panel.Active = "Panel", true
-    panel.ClipsDescendants = true
-    corner(panel,18)
-    local scale = Instance.new("UIScale")
-    scale.Name, scale.Parent = "ResponsiveScale", panel
-    local outline = Instance.new("UIStroke")
-    outline.Transparency, outline.Parent = 0.55, panel
-    role(outline,"Color","accent")
-    -- No UIGradient on a CanvasGroup: it tinted every descendant in the old UI.
-    local rail = frame(panel,0,0,140,480,"card")
-    label(rail,18,18,108,28,"RO / CHESS",15,"accent")
-    label(rail,18,44,108,18,"ENGINE STUDIO",9,"dim")
-    for i,name in ipairs({"Overview","Engine","Automation","Appearance","Configs"}) do
-        nav[name] = button(rail,10,88+(i-1)*44,120,name,function() showPage(name) end)
-    end
-    label(rail,18,408,110,18,"AURORA / 03",10,"accent")
-    label(rail,18,430,110,30,"Luau • 4:3",11,"dim")
-    rows.title = label(panel,160,20,370,26,"ROCHESS ENGINE",15)
-    rows.title.Active = true
-    dot = frame(panel,548,28,8,8,"accent")
-    corner(dot,8)
-    button(panel,574,16,42,"×",function() setVisible(false) end)
-    rows.status = label(panel,160,442,455,20,"Ready",11,"dim")
-    local overview = page("Overview","Position, evaluation and quick actions")
-    local evaluation = frame(overview,0,68,456,132,"card")
-    label(evaluation,16,10,420,16,"LIVE POSITION",10,"accent")
-    rows.eval = label(evaluation,16,34,420,30,"EVAL —",20)
-    rows.best = label(evaluation,16,72,420,24,"1 —",15)
-    rows.rest = label(evaluation,16,100,420,22,"",12,"dim")
-    rows.game = label(overview,0,210,456,24,"No game",11,"dim")
-    btns.play = button(overview,0,246,222,"PLAY NOW",function() playNow() end)
-    btns.copy = button(overview,234,246,222,"COPY FEN",function() copyPosition() end)
-    btns.botgame = button(overview,0,290,222,"BOT GAME / PRACTICE",function() startBotGame() end)
-    btns.arrows = button(overview,234,290,222,"ARROWS",function()
-        RUNTIME.SHOW_ARROW = not RUNTIME.SHOW_ARROW
-        clearArrows(); refreshButtons()
-    end)
-    local engine = page("Engine","Presets, search source and move selection")
-    label(engine,0,66,456,20,"PLAY STYLE",10,"accent")
-    btns.legit = button(engine,0,92,222,"LEGIT",function() applyPreset("legit") end)
-    btns.raj = button(engine,234,92,222,"RAJ",function() applyPreset("raj") end)
-    label(engine,0,138,456,20,"ENGINE SOURCE",10,"accent")
-    btns.engineLocal = button(engine,0,164,222,"LOCAL",function() RUNTIME.SOURCE="local"; RUNTIME.STYLE="custom"; S.ply=-1; refreshButtons() end)
-    btns.engineVortex = button(engine,234,164,222,"VORTEX",function() RUNTIME.SOURCE="vortex"; RUNTIME.STYLE="custom"; S.ply=-1; refreshButtons() end)
-    label(engine,0,210,456,20,"MOVE SELECTION",10,"accent")
-    btns.best = button(engine,0,236,222,"BEST",function() RUNTIME.MODE="best"; RUNTIME.STYLE="custom"; refreshButtons() end)
-    btns.elo = button(engine,234,236,222,"ELO",function() RUNTIME.MODE="elo"; RUNTIME.STYLE="custom"; refreshButtons() end)
-    local rating = label(engine,54,288,160,34,"",13)
-    button(engine,0,288,42,"−",function() RUNTIME.ELO=math.max(100,RUNTIME.ELO-100); RUNTIME.STYLE="custom"; refreshButtons() end)
-    button(engine,222,288,42,"+",function() RUNTIME.ELO=math.min(3200,RUNTIME.ELO+100); RUNTIME.STYLE="custom"; refreshButtons() end)
-    rows.rating = rating
-    local automation = page("Automation","Autoplay timing and input options")
-    btns.auto = button(automation,0,70,456,"AUTOPLAY",function() toggleAuto() end)
-    local delayValues = {}
-    for i,key in ipairs({"DELAY_MIN","DELAY_MAX"}) do
-        local y=128+(i-1)*56
-        label(automation,0,y,170,34,i==1 and "Minimum delay" or "Maximum delay",13)
-        button(automation,196,y,42,"−",function()
-            if key=="DELAY_MIN" then RUNTIME[key]=math.max(0,RUNTIME[key]-0.5)
-            else RUNTIME[key]=math.max(RUNTIME.DELAY_MIN+0.5,RUNTIME[key]-0.5) end
-            RUNTIME.STYLE="custom"; syncDelay(); refreshButtons()
-        end)
-        delayValues[key]=label(automation,254,y,118,34,"",14)
-        button(automation,414,y,42,"+",function()
-            if key=="DELAY_MIN" then RUNTIME[key]=math.min(RUNTIME.DELAY_MAX-0.5,RUNTIME[key]+0.5)
-            else RUNTIME[key]=math.min(20,RUNTIME[key]+0.5) end
-            RUNTIME.STYLE="custom"; syncDelay(); refreshButtons()
-        end)
-    end
-    syncDelay = function()
-        for key,l in pairs(delayValues) do l.Text=string.format("%.1f sec",RUNTIME[key]) end
-    end
-    btns.humanize=button(automation,0,250,456,"HUMANIZE",function() RUNTIME.HUMANIZE=not RUNTIME.HUMANIZE; refreshButtons() end)
-    label(automation,0,302,456,26,"End: autoplay  /  Home: arrows  /  +: panel",11,"dim")
-    local appearance=page("Appearance","Personalize the panel; save your look in a config")
-    label(appearance,0,66,456,20,"COLOR THEME",10,"accent")
-    for i,name in ipairs({"Midnight","Graphite","Pearl"}) do
-        button(appearance,(i-1)*156,94,144,name,function() RUNTIME.THEME=name; applyTheme() end)
-    end
-    label(appearance,0,142,456,20,"ACCENT COLOR",10,"accent")
-    for i,name in ipairs({"Blue","Mint","Violet","Rose"}) do
-        button(appearance,(i-1)*117,170,105,name,function() RUNTIME.ACCENT=name; applyTheme() end)
-    end
-    btns.animations=button(appearance,0,226,456,"ANIMATIONS",function() RUNTIME.ANIMATIONS=not RUNTIME.ANIMATIONS; refreshButtons() end)
-    label(appearance,0,282,456,48,"640 × 480 • scales to your screen\nDrag the header to move the panel",12,"dim").TextWrapped=true
-    local configs=page("Configs","Select, create, rename and save named configurations")
-    local list = Instance.new("ScrollingFrame")
-    list.Position, list.Size = UDim2.fromOffset(0,68), UDim2.fromOffset(210,236)
-    list.BackgroundTransparency, list.BorderSizePixel = 1, 0
-    list.ScrollBarThickness = 3
-    list.CanvasSize = UDim2.fromOffset(0,0)
-    list.Parent = configs
-    local input = Instance.new("TextBox")
-    input.Position,input.Size=UDim2.fromOffset(226,68),UDim2.fromOffset(230,34)
-    input.PlaceholderText="Config name…"
-    input.Text=""
-    input.ClearTextOnFocus=false
-    input.TextSize,input.Font=12,Enum.Font.GothamMedium
-    input.BorderSizePixel=0
-    input.Parent=configs
-    corner(input,8)
-    role(input,"BackgroundColor3","button"); role(input,"TextColor3","text"); role(input,"PlaceholderColor3","dim")
-    local notice=label(configs,0,312,456,30,configNotice,11,"dim")
-    local selected=tostring(store.active)
-    local profileButtons={}
-    local rebuild
-    local function cleanName()
-        local name=input.Text:match("^%s*(.-)%s*$")
-        if #name==0 or #name>48 or name:find("[%c]") then notice.Text="Use a name of 1–48 bytes"; return nil end
-        for id,n in pairs(store.names) do
-            if id~=selected and n==name then notice.Text="That name already exists"; return nil end
+    if not Library then return false end
+    local ok, err = pcall(function()
+        local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui")
+        uiWindow = Library:CreateWindow({
+            Title = "RoCheese", Logo = "R", GuiName = "RoCheesePanel", Parent = playerGui,
+            Theme = RUNTIME.THEME, Accent = accents[RUNTIME.ACCENT] or accents.Blue,
+            Configs = false, MouseWheel = true,
+            Watermark = {Title = "RoCheese", Site = "ZeninLib", Detail = "Chess analysis"},
+        })
+        if type(uiWindow) ~= "table" or type(uiWindow.AddTab) ~= "function" then
+            error("ZeninLib CreateWindow returned an invalid window", 0)
         end
-        return name
-    end
-    rebuild=function()
-        for _,b in ipairs(profileButtons) do b:Destroy() end
-        profileButtons={}
-        local ids={}
-        for id in pairs(store.profiles) do table.insert(ids,id) end
-        table.sort(ids,function(a,b) return (store.names[a] or a)<(store.names[b] or b) end)
-        for i,id in ipairs(ids) do
-            local b=button(list,0,(i-1)*42,200,store.names[id] or ("Profile "..id),function()
-                selected=id; input.Text=store.names[id] or ("Profile "..id)
-                notice.Text="Selected: "..input.Text.." — press LOAD"
-                rebuild()
-            end)
-            -- The dynamic list is recolored directly; discard obsolete theme records.
-            for _=1,3 do table.remove(themed) end
-            setBtn(b,id==selected,b.Text)
-            table.insert(profileButtons,b)
+        gui = playerGui:FindFirstChild("RoCheesePanel")
+        if not gui then error("ZeninLib did not create its ScreenGui", 0) end
+        panel = gui:FindFirstChild("Window")
+        if not panel then error("ZeninLib did not create its window frame", 0) end
+
+        local overview = uiWindow:AddTab({Name = "Overview"})
+        local summary = overview:AddSection({Name = "Live status", Side = "Left"})
+        rows.title = addReadout(summary, "title", "ROCHEESE / CHESS ENGINE")
+        rows.eval = addReadout(summary, "eval", "Evaluation: —")
+        rows.best = addReadout(summary, "best", "Best move: —")
+        rows.status = addReadout(summary, "status", "Status: starting")
+        rows.game = addReadout(summary, "game", "Game: no game")
+        rows.rest = addReadout(summary, "rest", "Moves: —")
+        rows.rating = addReadout(summary, "rating", "Rating: " .. tostring(RUNTIME.ELO))
+        local actions = overview:AddSection({Name = "Actions", Side = "Right"})
+        btns.play = actions:AddButton({Name = "PLAY BEST NOW", Callback = function() if playNow then playNow() end end})
+        btns.copy = actions:AddButton({Name = "COPY POSITION + MOVES", Callback = function() if copyPosition then copyPosition() end end})
+        btns.botgame = actions:AddButton({Name = "BOT GAME / PRACTICE", Callback = function() if startBotGame then startBotGame() end end})
+        btns.arrows = actions:AddButton({Name = "ARROWS", Callback = function()
+            RUNTIME.SHOW_ARROW = not RUNTIME.SHOW_ARROW
+            if not RUNTIME.SHOW_ARROW then clearArrows() end
+            refreshButtons()
+        end})
+        btns.auto = actions:AddButton({Name = "AUTOPLAY", Callback = function() if toggleAuto then toggleAuto() end end})
+        actions:AddButton({Name = "TOGGLE MENU", Callback = function() if uiWindow then setVisible(not uiWindow:IsVisible()) end end})
+
+        local engine = uiWindow:AddTab({Name = "Engine"})
+        local presets = engine:AddSection({Name = "Presets", Side = "Left"})
+        btns.legit = presets:AddButton({Name = "LEGIT / HUMAN", Callback = function() if applyPreset then applyPreset("legit") end end})
+        btns.raj = presets:AddButton({Name = "RAJ / FAST", Callback = function() if applyPreset then applyPreset("raj") end end})
+        local engineSettings = engine:AddSection({Name = "Engine settings", Side = "Right"})
+        controls.source = engineSettings:AddDropdown({Name = "Analysis source", Options = {"local", "vortex"}, Default = RUNTIME.SOURCE, Callback = function(value)
+            RUNTIME.SOURCE, RUNTIME.STYLE, S.ply = value, "custom", -1
+            refreshButtons()
+        end})
+        controls.mode = engineSettings:AddDropdown({Name = "Move selection", Options = {"elo", "best"}, Default = RUNTIME.MODE, Callback = function(value)
+            RUNTIME.MODE, RUNTIME.STYLE = value, "custom"
+            refreshButtons()
+        end})
+        controls.elo = engineSettings:AddSlider({Name = "Target ELO", Min = 100, Max = 3200, Step = 100, Default = RUNTIME.ELO, Callback = function(value)
+            RUNTIME.ELO, RUNTIME.STYLE = math.clamp(value, 100, 3200), "custom"
+            refreshButtons()
+        end})
+        controls.noise = engineSettings:AddSlider({Name = "Move noise", Min = 0, Max = 1, Step = 0.01, Decimals = 2, Default = RUNTIME.NOISE, Callback = function(value)
+            RUNTIME.NOISE, RUNTIME.STYLE = math.clamp(value, 0, 1), "custom"
+            refreshButtons()
+        end})
+        controls.blunder = engineSettings:AddSlider({Name = "Blunder chance", Min = 0, Max = 1, Step = 0.01, Decimals = 2, Default = RUNTIME.BLUNDER, Callback = function(value)
+            RUNTIME.BLUNDER, RUNTIME.STYLE = math.clamp(value, 0, 1), "custom"
+            refreshButtons()
+        end})
+
+        local automation = uiWindow:AddTab({Name = "Automation"})
+        local timing = automation:AddSection({Name = "Move timing", Side = "Left"})
+        controls.delayMin = timing:AddSlider({Name = "Minimum delay", Min = CFG.DELAY_MIN, Max = CFG.DELAY_MAX, Step = CFG.DELAY_STEP, Decimals = 1, Suffix = " s", Default = RUNTIME.DELAY_MIN, Callback = function(value)
+            RUNTIME.DELAY_MIN = math.min(19.5, math.floor(value / CFG.DELAY_STEP + 0.5) * CFG.DELAY_STEP)
+            if RUNTIME.DELAY_MAX - RUNTIME.DELAY_MIN < CFG.DELAY_STEP then RUNTIME.DELAY_MAX = RUNTIME.DELAY_MIN + CFG.DELAY_STEP end
+            RUNTIME.STYLE = "custom"
+            syncDelay(); refreshButtons()
+        end})
+        controls.delayMax = timing:AddSlider({Name = "Maximum delay", Min = CFG.DELAY_MIN, Max = CFG.DELAY_MAX, Step = CFG.DELAY_STEP, Decimals = 1, Suffix = " s", Default = RUNTIME.DELAY_MAX, Callback = function(value)
+            RUNTIME.DELAY_MAX = math.clamp(math.floor(value / CFG.DELAY_STEP + 0.5) * CFG.DELAY_STEP, CFG.DELAY_STEP, CFG.DELAY_MAX)
+            if RUNTIME.DELAY_MAX - RUNTIME.DELAY_MIN < CFG.DELAY_STEP then RUNTIME.DELAY_MIN = math.max(0, RUNTIME.DELAY_MAX - CFG.DELAY_STEP) end
+            RUNTIME.STYLE = "custom"
+            syncDelay(); refreshButtons()
+        end})
+        syncDelay = function()
+            elementSet(controls.delayMin, RUNTIME.DELAY_MIN)
+            elementSet(controls.delayMax, RUNTIME.DELAY_MAX)
         end
-        list.CanvasSize=UDim2.fromOffset(0,#ids*42)
-    end
-    button(configs,226,114,110,"CREATE",function()
-        local name=cleanName(); if not name then return end
-        for _,n in pairs(store.names) do if n==name then notice.Text="That name already exists"; return end end
-        local id=HttpService:GenerateGUID(false)
-        store.profiles[id],store.names[id]=validated(RUNTIME),name
-        selected,store.active=id,id
-        notice.Text=persistProfiles(); rebuild()
-    end)
-    button(configs,346,114,110,"RENAME",function()
-        if not store.profiles[selected] then notice.Text="Select a config first"; return end
-        local name=cleanName(); if not name then return end
-        store.names[selected]=name; notice.Text=persistProfiles(); rebuild()
-    end)
-    button(configs,226,158,110,"SAVE",function()
-        if not store.profiles[selected] then notice.Text="Create or select a config first"; return end
-        store.profiles[selected],store.active=validated(RUNTIME),selected
-        notice.Text=persistProfiles(); rebuild()
-    end)
-    button(configs,346,158,110,"LOAD",function()
-        if not store.profiles[selected] then notice.Text="Select a config first"; return end
-        applyConfig(store.profiles[selected]); store.active=selected
-        S.ply=-1; clearArrows(); syncDelay(); applyTheme()
-        notice.Text="Loaded: "..(store.names[selected] or selected).." / "..persistProfiles()
-        rebuild()
-    end)
-    local pendingDelete
-    button(configs,226,202,230,"DELETE SELECTED",function()
-        if not store.profiles[selected] then notice.Text="Select a config first"; return end
-        if pendingDelete~=selected then
-            pendingDelete=selected; notice.Text="Press DELETE again to confirm"
-            task.delay(3,function() pendingDelete=nil end); return
-        end
-        store.profiles[selected],store.names[selected]=nil,nil
-        pendingDelete=nil
-        if tostring(store.active)==selected then store.active="" end
-        selected=""; input.Text=""; notice.Text=persistProfiles(); rebuild()
-    end)
-    button(configs,226,246,230,"RESET CURRENT SETTINGS",function()
-        applyConfig(DEFAULTS); S.ply=-1; clearArrows(); syncDelay(); applyTheme()
-        notice.Text="Defaults applied; saved configs unchanged"; rebuild()
-    end)
-    applyTheme=function()
-        local t=themes[RUNTIME.THEME] or themes.Midnight
-        t.accent=accents[RUNTIME.ACCENT] or accents.Blue
-        C_ACC,C_TXT,C_DIM,C_BG,C_IDLE=t.accent,t.text,t.dim,t.bg,t.button
-        for _,item in ipairs(themed) do
-            if item[1].Parent then item[1][item[2]]=t[item[3]] end
-        end
-        refreshButtons(); showPage(currentPage); rebuild()
-    end
-    local reopen=button(gui,16,80,44,"+",function() setVisible(true) end)
-    reopen.BackgroundColor3=C_BG; reopen.TextColor3=C_ACC
-    local visibilityToken=0
-    local restingPosition
-    setVisible=function(value)
-        visibilityToken+=1
-        local token=visibilityToken
-        RUNTIME.UI_VISIBLE=value
-        if activeTweens[panel] then activeTweens[panel]:Cancel() end
-        if opening and restingPosition then panel.Position=restingPosition end
-        opening=false
-        layoutPanel()
-        local target=panel.Position
-        restingPosition=target
-        reopen.Visible=not value
-        if value then
-            panel.Visible=true
-            panel.Position=target+UDim2.fromOffset(0,12)
-            opening=true
-            animate(panel,{Position=target},0.24)
-        else
-            opening=true
-            animate(panel,{Position=target+UDim2.fromOffset(0,12)},0.18)
-        end
-        task.delay(0.25,function()
-            if alive() and token==visibilityToken then panel.Visible=value; panel.Position=target; opening=false end
-        end)
-    end
-    local dragging,dragInput,dragStart,origin=false,nil,nil,nil
-    rows.title.InputBegan:Connect(function(inputObject)
-        if inputObject.UserInputType==Enum.UserInputType.MouseButton1 or inputObject.UserInputType==Enum.UserInputType.Touch then
-            if activeTweens[panel] then activeTweens[panel]:Cancel() end
-            opening=false; visibilityToken+=1
-            dragging=true; dragInput=inputObject; dragged=true
-            dragStart=inputObject.Position; origin=panel.Position
-        end
-    end)
-    connect(UserInputService.InputChanged,function(inputObject)
-        if not dragging then return end
-        if inputObject.UserInputType==Enum.UserInputType.MouseMovement or inputObject==dragInput then
-            local delta=inputObject.Position-dragStart
-            panel.Position=origin+UDim2.fromOffset(delta.X,delta.Y)
+        btns.humanize = timing:AddToggle({Name = "Humanize input", Default = RUNTIME.HUMANIZE, Callback = function(value)
+            RUNTIME.HUMANIZE = value == true
+            refreshButtons()
+        end})
+        btns.autoToggle = timing:AddToggle({Name = "Autoplay", Default = RUNTIME.AUTO, Callback = function(value)
+            if (value == true) ~= RUNTIME.AUTO and toggleAuto then toggleAuto() end
+        end})
+        btns.arrowToggle = timing:AddToggle({Name = "Show move arrows", Default = RUNTIME.SHOW_ARROW, Callback = function(value)
+            RUNTIME.SHOW_ARROW = value == true
+            if not RUNTIME.SHOW_ARROW then clearArrows() end
+            refreshButtons()
+        end})
+
+        local appearance = uiWindow:AddTab({Name = "Appearance"})
+        local display = appearance:AddSection({Name = "Display", Side = "Left"})
+        controls.theme = display:AddDropdown({Name = "Theme", Options = themeNames, Default = RUNTIME.THEME, Callback = function(value)
+            RUNTIME.THEME, RUNTIME.STYLE = value, "custom"
+            applyTheme()
+        end})
+        controls.accent = display:AddDropdown({Name = "Accent", Options = accentNames, Default = RUNTIME.ACCENT, Callback = function(value)
+            RUNTIME.ACCENT, RUNTIME.STYLE = value, "custom"
+            applyTheme()
+        end})
+        btns.animations = display:AddToggle({Name = "Animate scaling", Default = RUNTIME.ANIMATIONS, Callback = function(value)
+            RUNTIME.ANIMATIONS = value == true
+            refreshButtons()
+        end})
+        controls.scale = display:AddSlider({Name = "Window scale", Min = 0.5, Max = 1.25, Step = 0.05, Decimals = 2, Default = 1, Callback = function(value)
+            userScale = value
             layoutPanel()
-        end
+        end})
+        local shortcuts = appearance:AddSection({Name = "Keyboard shortcuts", Side = "Right"})
+        shortcuts:AddButton({Name = "END — toggle autoplay", Callback = function() if toggleAuto then toggleAuto() end end})
+        shortcuts:AddButton({Name = "HOME — toggle arrows", Callback = function()
+            RUNTIME.SHOW_ARROW = not RUNTIME.SHOW_ARROW
+            if not RUNTIME.SHOW_ARROW then clearArrows() end
+            refreshButtons()
+        end})
+        shortcuts:AddButton({Name = "PAGE UP / + — menu", Callback = function() if uiWindow then setVisible(not uiWindow:IsVisible()) end end})
+        shortcuts:AddButton({Name = "PAGE DOWN — source", Callback = function()
+            RUNTIME.SOURCE = RUNTIME.SOURCE == "local" and "vortex" or "local"
+            RUNTIME.STYLE, S.ply = "custom", -1
+            refreshButtons()
+        end})
+        shortcuts:AddButton({Name = "INSERT — copy position", Callback = function() if copyPosition then copyPosition() end end})
+
+        local profiles = uiWindow:AddTab({Name = "Profiles"})
+        local profileSection = profiles:AddSection({Name = "Saved profiles", Side = "Left"})
+        profilePicker = profileSection:AddDropdown({Name = "Select profile", Options = {}, AllowNone = true, Placeholder = "No profiles", Callback = function(label)
+            profileSelection = profileIds[label]
+            if profileSelection then
+                setProfileNotice("Selected " .. tostring(store.names[profileSelection] or profileSelection) .. " — choose an action")
+                refreshProfileOptions()
+            end
+        end})
+        profileNamePicker = profileSection:AddDropdown({Name = "Rename as", Options = {}, AllowNone = true, Placeholder = "Choose a profile name"})
+        controls.profileStatus = profileSection:AddButton({Name = "Profiles: " .. configNotice, Callback = function() end})
+        profileNotice = setmetatable({}, {
+            __newindex = function(_, field, value)
+                if field == "Text" then elementName(controls.profileStatus, "Profiles: " .. tostring(value)) end
+            end,
+        })
+        profileSection:AddButton({Name = "CREATE PROFILE", Callback = function()
+            local used = {}
+            for _, name in pairs(store.names) do used[name] = true end
+            local name
+            for i = 1, 50 do
+                local candidate = "Profile " .. i
+                if not used[candidate] then name = candidate; break end
+            end
+            local idOk, id = pcall(function() return HttpService:GenerateGUID(false) end)
+            if not idOk then id = tostring(os.clock()) .. "-" .. tostring(math.random(100000, 999999)) end
+            id = tostring(id)
+            if not name then
+                name = "Profile " .. id:sub(1, 8)
+                local suffix = 2
+                while used[name] do
+                    name = "Profile " .. id:sub(1, 8) .. " (" .. suffix .. ")"
+                    suffix = suffix + 1
+                end
+            end
+            store.profiles[id], store.names[id] = validated(RUNTIME), name
+            profileSelection, store.active = id, id
+            setProfileNotice(persistProfiles())
+            refreshProfileOptions()
+        end})
+        profileSection:AddButton({Name = "RENAME SELECTED", Callback = function()
+            if not profileSelection or not store.profiles[profileSelection] then setProfileNotice("Select a profile first"); return end
+            local name = profileNamePicker:Get()
+            if type(name) ~= "string" or name == "" then setProfileNotice("Choose a profile name"); return end
+            for id, existing in pairs(store.names) do
+                if id ~= profileSelection and existing == name then setProfileNotice("That profile name is already in use"); return end
+            end
+            store.names[profileSelection] = name
+            setProfileNotice(persistProfiles())
+            refreshProfileOptions()
+        end})
+        profileSection:AddButton({Name = "SAVE CURRENT SETTINGS", Callback = function()
+            if not profileSelection or not store.profiles[profileSelection] then setProfileNotice("Create or select a profile first"); return end
+            store.profiles[profileSelection], store.active = validated(RUNTIME), profileSelection
+            setProfileNotice(persistProfiles())
+            refreshProfileOptions()
+        end})
+        profileSection:AddButton({Name = "LOAD SELECTED", Callback = function()
+            if not profileSelection or not store.profiles[profileSelection] then setProfileNotice("Select a profile first"); return end
+            applyConfig(store.profiles[profileSelection])
+            store.active = profileSelection
+            S.ply = -1
+            clearArrows()
+            syncDelay()
+            applyTheme()
+            refreshButtons()
+            setProfileNotice("Loaded " .. tostring(store.names[profileSelection] or profileSelection) .. " / " .. persistProfiles())
+        end})
+        local pendingDelete
+        profileSection:AddButton({Name = "DELETE SELECTED (confirm twice)", Callback = function()
+            if not profileSelection or not store.profiles[profileSelection] then setProfileNotice("Select a profile first"); return end
+            if pendingDelete ~= profileSelection then
+                pendingDelete = profileSelection
+                setProfileNotice("Press DELETE again within 3 seconds to confirm")
+                task.delay(3, function() pendingDelete = nil end)
+                return
+            end
+            store.profiles[profileSelection], store.names[profileSelection] = nil, nil
+            if tostring(store.active) == profileSelection then store.active = "" end
+            pendingDelete, profileSelection = nil, nil
+            setProfileNotice(persistProfiles())
+            refreshProfileOptions()
+        end})
+        profileSection:AddButton({Name = "RESET CURRENT SETTINGS", Callback = function()
+            applyConfig(DEFAULTS)
+            S.ply = -1
+            clearArrows()
+            syncDelay()
+            applyTheme()
+            refreshButtons()
+            setProfileNotice("Defaults applied; saved profiles were not changed")
+        end})
+
+        refreshProfileOptions()
+        syncDelay()
+        applyTheme()
+        layoutPanel()
+        setVisible(RUNTIME.UI_VISIBLE ~= false)
+        uiWindow:OnUnload(function()
+            gui, panel = nil, nil
+            GENV.__RoCheeseDispose()
+        end)
+        local createdWindow = uiWindow
+        cleanup(function()
+            if createdWindow then pcall(function() createdWindow:Destroy() end) end
+            if uiWindow == createdWindow then uiWindow = nil end
+            gui, panel = nil, nil
+        end)
+        local camera = workspace.CurrentCamera
+        if camera then connect(camera:GetPropertyChangedSignal("ViewportSize"), layoutPanel) end
     end)
-    connect(UserInputService.InputEnded,function(inputObject)
-        if inputObject==dragInput or inputObject.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false end
-    end)
-    syncDelay(); applyTheme(); setVisible(RUNTIME.UI_VISIBLE~=false)
-    cleanup(function() if gui then gui:Destroy(); gui=nil; panel=nil end end)
+    if not ok then
+        warn("[rocheese] ZeninLib GUI initialization failed: " .. tostring(err))
+        if uiWindow then pcall(function() uiWindow:Destroy() end) end
+        uiWindow, gui, panel = nil, nil, nil
+        return false
+    end
+    return true
 end
-refreshButtons=function()
-    if not btns.auto then return end
-    setBtn(btns.auto,RUNTIME.AUTO,RUNTIME.AUTO and "AUTOPLAY / ON" or "AUTOPLAY / OFF")
-    setBtn(btns.legit,RUNTIME.STYLE=="legit","LEGIT / HUMAN",C_ON)
-    setBtn(btns.raj,RUNTIME.STYLE=="raj","RAJ / FAST",C_RAJ)
-    setBtn(btns.best,RUNTIME.MODE=="best","BEST MOVE")
-    setBtn(btns.elo,RUNTIME.MODE=="elo","ELO / "..RUNTIME.ELO)
-    setBtn(btns.engineLocal,RUNTIME.SOURCE=="local","LOCAL")
-    setBtn(btns.engineVortex,RUNTIME.SOURCE=="vortex","VORTEX")
-    setBtn(btns.arrows,RUNTIME.SHOW_ARROW,RUNTIME.SHOW_ARROW and "ARROWS / ON" or "ARROWS / OFF")
-    setBtn(btns.humanize,RUNTIME.HUMANIZE,RUNTIME.HUMANIZE and "HUMANIZE INPUT / ON" or "HUMANIZE INPUT / OFF")
-    setBtn(btns.animations,RUNTIME.ANIMATIONS,RUNTIME.ANIMATIONS and "ANIMATIONS / ON" or "ANIMATIONS / OFF")
-    rows.rating.Text="Rating: "..RUNTIME.ELO
+
+refreshButtons = function()
+    if not uiWindow then return end
+    elementName(btns.auto, RUNTIME.AUTO and "AUTOPLAY / ON" or "AUTOPLAY / OFF")
+    elementName(btns.legit, RUNTIME.STYLE == "legit" and "✓ LEGIT / HUMAN" or "LEGIT / HUMAN")
+    elementName(btns.raj, RUNTIME.STYLE == "raj" and "✓ RAJ / FAST" or "RAJ / FAST")
+    elementName(btns.arrows, RUNTIME.SHOW_ARROW and "ARROWS / ON" or "ARROWS / OFF")
+    elementSet(btns.autoToggle, RUNTIME.AUTO)
+    elementSet(btns.arrowToggle, RUNTIME.SHOW_ARROW)
+    elementSet(btns.humanize, RUNTIME.HUMANIZE)
+    elementSet(btns.animations, RUNTIME.ANIMATIONS)
+    elementSet(controls.source, RUNTIME.SOURCE)
+    elementSet(controls.mode, RUNTIME.MODE)
+    elementSet(controls.elo, RUNTIME.ELO)
+    elementSet(controls.noise, RUNTIME.NOISE)
+    elementSet(controls.blunder, RUNTIME.BLUNDER)
+    elementSet(controls.theme, RUNTIME.THEME)
+    elementSet(controls.accent, RUNTIME.ACCENT)
+    if rows.rating then rows.rating.Text = "Rating: " .. tostring(RUNTIME.ELO) end
 end
-layoutPanel=function()
-    if not panel or not panel.Parent or opening then return end
-    local cam=workspace.CurrentCamera
-    local vp=cam and cam.ViewportSize or Vector2.new(1280,720)
-    local scale=math.max(0.1,math.min(1,(vp.X-24)/640,(vp.Y-24)/480))
-    panel.ResponsiveScale.Scale=scale
-    local width,height=640*scale,480*scale
-    local x=dragged and panel.Position.X.Offset or vp.X-width-24
-    local y=dragged and panel.Position.Y.Offset or (vp.Y-height)/2
-    panel.Position=UDim2.fromOffset(math.clamp(x,0,math.max(0,vp.X-width)),math.clamp(y,0,math.max(0,vp.Y-height)))
+
+layoutPanel = function()
+    if not panel or not panel.Parent or not uiWindow then return end
+    RUNTIME.UI_VISIBLE = uiWindow:IsVisible()
+    local camera = workspace.CurrentCamera
+    local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+    local fit = math.clamp(math.min((viewport.X - 24) / 480, (viewport.Y - 24) / 338), 0.3, 1.25)
+    local scale = math.min(userScale, fit)
+    if appliedScale ~= scale then
+        uiWindow:SetScale(scale, RUNTIME.ANIMATIONS)
+        appliedScale = scale
+    end
 end
-local function shiftPanel(dx,dy)
+
+local function shiftPanel(dx, dy)
     if not panel then return end
-    dragged=true
-    panel.Position=panel.Position+UDim2.fromOffset(dx,dy)
+    panel.Position = panel.Position + UDim2.fromOffset(dx, dy)
     layoutPanel()
+end
+
+applyTheme = function()
+    if not uiWindow then return end
+    C_ACC = accents[RUNTIME.ACCENT] or accents.Blue
+    uiWindow:SetTheme(RUNTIME.THEME)
+    uiWindow:SetAccent(C_ACC)
+    elementSet(controls.theme, RUNTIME.THEME)
+    elementSet(controls.accent, RUNTIME.ACCENT)
+    refreshButtons()
+end
+
+setVisible = function(value)
+    RUNTIME.UI_VISIBLE = value == true
+    if uiWindow then uiWindow:SetVisible(RUNTIME.UI_VISIBLE) end
 end
 
 -- actions ---------------------------------------------------------------------------------
@@ -806,21 +885,27 @@ end
 
 playNow = function()
 	local session = App.session
-	if not session then
-		S.status = "no game running"
-		return
+	if not session then S.status = "no game running"; return end
+	if S.playPending or os.clock() < S.autoAt then return end
+	if S.busy or not S.best then S.status = "engine still thinking"; return end
+	local position = session.startFen .. "|" .. table.concat(session.ucis, " ")
+	if S.session ~= session or S.positionKey ~= position then
+		S.status = "waiting for current analysis"; return
 	end
-	if S.busy or not S.best then
-		S.status = "engine still thinking"
-		return
-	end
-	local uci = pickMove(session)
-	if type(uci) ~= "string" then
-		S.status = "no move available"
-		return
-	end
-	local ok, err = playUci(uci)
-	S.status = ok and ("played " .. tostring(err)) or tostring(err)
+	local analysisId = S.analysisId
+	S.playPending = true
+	local success, err = pcall(function()
+		local uci = pickMove(session)
+		if not alive() or App.session ~= session or S.analysisId ~= analysisId
+			or session.startFen .. "|" .. table.concat(session.ucis, " ") ~= position then
+			return
+		end
+		local ok, message = playUci(uci)
+		S.status = ok and ("played " .. message) or message
+	end)
+	S.playPending = false
+	S.autoAt = os.clock() + 1
+	if not success then S.status = "move selection failed" end
 end
 
 copyPosition = function()
@@ -831,8 +916,8 @@ copyPosition = function()
 	end
 	local fen = session.engine:getFen()
 	local sans = table.concat(session.sans, " ")
-	pcall(setclipboard, fen .. "\n" .. sans)
-	S.status = "fen + moves copied"
+	local ok = type(setclipboard) == "function" and pcall(setclipboard, fen .. "\n" .. sans)
+	S.status = ok and "fen + moves copied" or "clipboard unavailable"
 end
 
 startBotGame = function()
@@ -897,7 +982,7 @@ local function onKey(input, processed)
 		end
 		refreshButtons()
 	elseif code == Enum.KeyCode.PageUp or code == Enum.KeyCode.Equals or code == Enum.KeyCode.KeypadPlus then
-        if setVisible then setVisible(not (RUNTIME.UI_VISIBLE ~= false)) end
+        if setVisible then setVisible(uiWindow and not uiWindow:IsVisible() or false) end
 	elseif code == Enum.KeyCode.PageDown then
 		RUNTIME.SOURCE = RUNTIME.SOURCE == "local" and "vortex" or "local"
 		RUNTIME.STYLE = "custom"
@@ -1032,7 +1117,10 @@ end
 
 -- main loop -------------------------------------------------------------------------------
 
-buildGui()
+if not buildGui() then
+    GENV.__RoCheeseDispose()
+    return
+end
 refreshButtons()
 S.status = "ready / + to toggle"
 
@@ -1072,8 +1160,10 @@ task.spawn(function()
         local session = App.session
 		local ply = session and #session.ucis or -1
 		local sid = session and session.id or nil
+		local positionKey = session and (session.startFen .. "|" .. table.concat(session.ucis, " ")) or nil
 
-		if session and sid ~= S.sessionId then
+		if session ~= S.session then
+			S.session = session
 			S.sessionId = sid
             S.ply = -1
 			lastEval = nil
@@ -1082,7 +1172,18 @@ task.spawn(function()
 			end)
 		end
 
-		if session and ply ~= S.ply then
+		if not session then
+			S.analysisId = (S.analysisId or 0) + 1
+			S.ply, S.positionKey, S.best, S.second, S.third = -1, nil, nil, nil, nil
+			S.busy = false
+			S.status = "waiting for game"
+			clearArrows()
+		end
+
+		if session and (ply ~= S.ply or positionKey ~= S.positionKey) then
+			S.analysisId = (S.analysisId or 0) + 1
+			S.positionKey = positionKey
+			S.busy = false
 			S.ply = ply
 			-- a new position means a fresh think time, exactly like a human
 			S.thinkAt = os.clock() + humanDelay()
@@ -1098,11 +1199,17 @@ task.spawn(function()
 				local startFen = session.startFen
 				local moves = table.clone(session.ucis)
 				local wantPly = ply
+				local analysisId = S.analysisId
+				local source = RUNTIME.SOURCE
+				local function isCurrent()
+					return alive() and S.analysisId == analysisId and RUNTIME.SOURCE == source and App.session == session
+						and session.startFen .. "|" .. table.concat(session.ucis, " ") == positionKey
+				end
 
 				task.spawn(function()
 					-- main search: the best move and the eval
-					local res = analyseBest(startFen, moves)
-					if not alive() then
+					local success, res = pcall(analyseBest, startFen, moves)
+					if not isCurrent() then
 						return
 					end
 					S.busy = false
@@ -1111,21 +1218,24 @@ task.spawn(function()
 						S.ply = -1
 						return
 					end
-					if type(res) ~= "table" then
+					if not success or type(res) ~= "table" or type(res.best) ~= "string" then
 						S.status = "engine failed"
 						return
 					end
+					local legal, san = pcall(function()
+						return sanOf(buildEngine(startFen, moves), res.best)
+					end)
+					if not legal or not san then S.status = "engine returned an illegal move"; return end
 					S.best = res.best
 					S.score = tonumber(res.score) or 0
 					S.depth = tonumber(res.depth) or 0
 					S.status = "engine ready"
-					local engine = buildEngine(startFen, moves)
-					S.san = sanOf(engine, res.best)
+					S.san = san
 
 					-- second pass: rank the continuations for the 2nd and 3rd arrows
 					task.spawn(function()
-						local ranked = rankContinuations(startFen, moves, res.best)
-						if not alive() then
+						local rankedOk, ranked = pcall(rankContinuations, startFen, moves, res.best, isCurrent)
+						if not rankedOk or not isCurrent() then
 							return
 						end
 						local live2 = App.session

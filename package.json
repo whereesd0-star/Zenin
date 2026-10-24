@@ -1,0 +1,6 @@
+{
+  "name": "zenin-rochess-checks",
+  "private": true,
+  "scripts": { "test": "node --test tests/*.test.cjs" },
+  "devDependencies": { "fengari": "0.1.5" }
+}
