@@ -1,7 +1,7 @@
 --[[
-	Zenin UI Library v3.0.0
+	Zenin UI Library
 
-	Элементы: Toggle, Slider, Dropdown, MultiDropdown, Button.
+	Элементы: Toggle, Slider, Dropdown, MultiDropdown, ColorPicker, Button.
 	Настройки (шестерёнка) встроены всегда: тема, акцент, размер меню, скроллбар, ватермарк.
 	Полная документация: README.md
 
@@ -10,7 +10,6 @@
 ]]
 
 local Library = {
-	Version = "3.0.0",
 	Flags = {},
 	Options = {},
 	Themes = {},
@@ -233,7 +232,8 @@ local TEXT = 11
 local TI_FAST = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local SCALE_OPTIONS = {"1.0x", "1.5x", "2.0x", "2.5x"}
 local SCALE_MAP = {["1.0x"] = 0.8, ["1.5x"] = 0.9, ["2.0x"] = 0.95, ["2.5x"] = 1}
-local DETAIL_MODES = {"Time", "FPS", "Ping", "Version", "Product Type"}
+local DETAIL_MODES = {"Time", "FPS", "Ping", "Product Type"}
+local DETAIL_ICONS = {Time = "clock", FPS = "activity", Ping = "wifi", ["Product Type"] = "monitor"}
 local WHITE = Color3.new(1, 1, 1)
 
 local WEIGHTS = {
@@ -273,7 +273,7 @@ local function Create(class, props)
 	return obj
 end
 
--- Скругления как в оригинале: окно 6, карточки 4, поля/кнопки/попапы 3, плитки вкладок 2.
+-- Скругления: окно 6, карточки 4, поля/кнопки/попапы 3, плитки вкладок 2.
 local function Corner(parent, r)
 	return Create("UICorner", {CornerRadius = UDim.new(0, r), Parent = parent})
 end
@@ -579,7 +579,7 @@ local function Finish(el, o)
 end
 
 -- ============================================================================
--- ШЕСТЕРЁНКА НАСТРОЕК ЭЛЕМЕНТА (панель как Font Settings в оригинале)
+-- ШЕСТЕРЁНКА НАСТРОЕК ЭЛЕМЕНТА
 -- ============================================================================
 local ElementApi
 local PANEL_W = 228
@@ -1657,7 +1657,7 @@ local function AddColorPicker(W, S, o)
 	return Finish(el, o)
 end
 
--- Обычная кнопка во всю ширину (как Reset to Defaults в оригинале).
+-- Обычная кнопка во всю ширину.
 local function AddPlainButton(W, S, o)
 	o = Opts(o)
 	local cb = o.Callback
@@ -1966,7 +1966,7 @@ local function NewPage(W, full)
 	end
 	page.Left = Column()
 	page.Right = full and page.Left or Column()
-	-- С полосой правый край контента = 9px левее неё (при толщине 6 это 456, как в оригинале).
+	-- С полосой правый край контента = 9px левее неё (при толщине 6 это 456).
 	-- Без полосы (контент влезает) блоки не сужаются.
 	function page.LayoutColumns()
 		local right = 456
@@ -2005,9 +2005,7 @@ local function BuildWatermark(W, cfg)
 		Fade = {},
 		LogoFade = {},
 		IconGroups = {},
-		Mode = cfg.Mode or "Product Type",
-		Detail = cfg.Detail or cfg.Text or "internal",
-		Version = cfg.Version or ("v" .. Library.Version),
+		Detail = cfg.Detail or cfg.Text or "roblox",
 		Provider = cfg.Provider,
 		ToggleOnClick = cfg.ToggleOnClick ~= false,
 		Opacity = 1,
@@ -2055,6 +2053,7 @@ local function BuildWatermark(W, cfg)
 		local d = Create("Frame", {Size = UDim2.fromOffset(1, 14), BorderSizePixel = 0, LayoutOrder = nx(), Parent = frame})
 		W.Paint(d, "BackgroundColor3", "WmDivider")
 		table.insert(WM.Fade, {d, "BackgroundTransparency", 0})
+		return d
 	end
 	local function Item(iconSpec, colorKey, text)
 		local grp = Create("Frame", {Size = UDim2.fromOffset(16, 12), BackgroundTransparency = 1, LayoutOrder = nx(), Parent = frame})
@@ -2086,10 +2085,79 @@ local function BuildWatermark(W, cfg)
 	WM.TitleItem = Item(cfg.TitleIcon or "tag", "Accent", cfg.Title or W.Title)
 	WM.SiteSpacer = Spacer(13)
 	WM.SiteItem = Item(cfg.SiteIcon or "globe", "WmSiteIcon", cfg.Site or "")
-	Spacer(8.5)
-	Divider()
-	Spacer(3.5)
-	WM.DetailItem = Item(cfg.DetailIcon or "monitor", "WmDetailIcon", WM.Detail)
+	-- Details: по пункту на каждый выбранный режим (Time / FPS / Ping / Product Type).
+	local detailSep = {Spacer(8.5), Divider(), Spacer(3.5)}
+	WM.Details = {}
+	for _, mode in ipairs(DETAIL_MODES) do
+		local box = Create("Frame", {
+			Size = UDim2.new(0, 0, 1, 0),
+			AutomaticSize = Enum.AutomaticSize.X,
+			BackgroundTransparency = 1,
+			LayoutOrder = nx(),
+			Parent = frame,
+		})
+		Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Parent = box,
+		})
+		local gap = Create("Frame", {Size = UDim2.fromOffset(13, 1), BackgroundTransparency = 1, LayoutOrder = 1, Parent = box})
+		local grp = Create("Frame", {Size = UDim2.fromOffset(16, 12), BackgroundTransparency = 1, LayoutOrder = 2, Parent = box})
+		local spec = (mode == "Product Type" and cfg.DetailIcon) or (cfg.DetailIcons and cfg.DetailIcons[mode]) or DETAIL_ICONS[mode]
+		local ic = CreateIcon(grp, spec, 12, UDim2.fromOffset(0, 0))
+		W.Paint(ic, "ImageColor3", "WmDetailIcon")
+		table.insert(WM.Fade, {ic, "ImageTransparency", 0})
+		table.insert(WM.IconGroups, grp)
+		local lbl = Label(box, "", {AutoX = true, Size = UDim2.new(0, 0, 1, 0)})
+		lbl.LayoutOrder = 3
+		W.Paint(lbl, "TextColor3", "WmText")
+		table.insert(WM.Fade, {lbl, "TextTransparency", 0})
+		WM.Details[mode] = {box = box, gap = gap, grp = grp, icon = ic, label = lbl}
+	end
+
+	local function ParseModes(m)
+		local set = {}
+		if type(m) == "string" then
+			set[m] = true
+		elseif type(m) == "table" then
+			for k, v in pairs(m) do
+				if type(k) == "number" then
+					set[v] = true
+				elseif v then
+					set[k] = true
+				end
+			end
+		end
+		return set
+	end
+	WM.Modes = ParseModes(cfg.Modes or cfg.Mode or {"Product Type"})
+
+	function WM.LayoutDetails()
+		local first = true
+		for _, mode in ipairs(DETAIL_MODES) do
+			local d = WM.Details[mode]
+			local on = WM.Modes[mode] == true
+			d.box.Visible = on
+			if on then
+				d.gap.Visible = not first
+				first = false
+			end
+		end
+		for _, x in ipairs(detailSep) do x.Visible = not first end
+	end
+	function WM.SetModes(m)
+		WM.Modes = ParseModes(m)
+		WM.LayoutDetails()
+		WM.UpdateDetails()
+	end
+	function WM.GetModes()
+		local out = {}
+		for _, mode in ipairs(DETAIL_MODES) do
+			if WM.Modes[mode] then table.insert(out, mode) end
+		end
+		return out
+	end
 
 	function WM.ApplyOpacity()
 		local a = WM.Opacity
@@ -2114,17 +2182,17 @@ local function BuildWatermark(W, cfg)
 	end
 	WM.BuildLogo()
 	WM.SetSite(cfg.Site)
+	WM.LayoutDetails()
 
 	local fps = 60
 	W.Connect(RunService.RenderStepped, function(dt)
 		if dt > 0 then fps = fps + (1 / dt - fps) * 0.1 end
 	end)
-	function WM.Text()
+	function WM.Text(mode)
 		if WM.Provider then
-			local res = SafeCall(WM.Provider, WM.Mode)
+			local res = SafeCall(WM.Provider, mode)
 			if res ~= nil then return tostring(res) end
 		end
-		local mode = WM.Mode
 		if mode == "Time" then
 			return os.date("%H:%M:%S")
 		elseif mode == "FPS" then
@@ -2134,15 +2202,22 @@ local function BuildWatermark(W, cfg)
 				return Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
 			end)
 			return ok and string.format("%d ms", math.floor(ping + 0.5)) or "-- ms"
-		elseif mode == "Version" then
-			return tostring(WM.Version)
 		end
 		return tostring(WM.Detail)
 	end
+	function WM.UpdateDetails()
+		for mode in pairs(WM.Modes) do
+			local d = WM.Details[mode]
+			if d then
+				local txt = WM.Text(mode)
+				if d.label.Text ~= txt then d.label.Text = txt end
+			end
+		end
+	end
+	WM.UpdateDetails()
 	task.spawn(function()
 		while W.Alive do
-			local txt = WM.Text()
-			if WM.DetailItem.label.Text ~= txt then WM.DetailItem.label.Text = txt end
+			WM.UpdateDetails()
 			task.wait(0.25)
 		end
 	end)
@@ -2153,13 +2228,22 @@ local function BuildWatermark(W, cfg)
 	Method(api, "Toggle", function() frame.Visible = not frame.Visible end)
 	Method(api, "SetTitle", function(t) WM.TitleItem.label.Text = tostring(t) end)
 	Method(api, "SetSite", function(t) WM.SetSite(t) end)
-	Method(api, "SetDetail", function(t) WM.Detail = t WM.DetailItem.label.Text = WM.Text() end)
-	Method(api, "SetVersion", function(t) WM.Version = t end)
-	Method(api, "SetProvider", function(fn) WM.Provider = fn end)
-	Method(api, "SetMode", function(m)
-		if W.WmDetails then W.WmDetails.Set(m) else WM.Mode = m end
+	Method(api, "SetDetail", function(t)
+		WM.Detail = t
+		WM.UpdateDetails()
 	end)
-	Method(api, "GetMode", function() return WM.Mode end)
+	Method(api, "SetProvider", function(fn)
+		WM.Provider = fn
+		WM.UpdateDetails()
+	end)
+	-- режимы: строка или список ("Time", "FPS", "Ping", "Product Type")
+	Method(api, "SetModes", function(m)
+		if type(m) == "string" then m = {m} end
+		if W.WmDetails then W.WmDetails.Set(m) else WM.SetModes(m) end
+	end)
+	api.SetMode = api.SetModes
+	Method(api, "GetModes", function() return WM.GetModes() end)
+	api.GetMode = api.GetModes
 	Method(api, "SetOpacity", function(a)
 		a = math.clamp(tonumber(a) or 1, 0, 1)
 		if W.WmOpacity then W.WmOpacity.Set(math.floor(a * 100 + 0.5)) else WM.Opacity = a WM.ApplyOpacity() end
@@ -2171,7 +2255,10 @@ local function BuildWatermark(W, cfg)
 		t = t or {}
 		if t.Title then ApplyIcon(WM.TitleItem.icon, t.Title) end
 		if t.Site then ApplyIcon(WM.SiteItem.icon, t.Site) end
-		if t.Detail then ApplyIcon(WM.DetailItem.icon, t.Detail) end
+		if t.Detail then ApplyIcon(WM.Details["Product Type"].icon, t.Detail) end
+		for mode, d in pairs(WM.Details) do
+			if t[mode] then ApplyIcon(d.icon, t[mode]) end
+		end
 	end)
 	Method(api, "SetPosition", function(p) frame.Position = p end)
 	Method(api, "SetToggleOnClick", function(b) WM.ToggleOnClick = b ~= false end)
@@ -2852,10 +2939,10 @@ local function BuildSettings(W, o)
 		Flag = "__ZeninWmIcons",
 		Callback = function(v) W.WM.SetIconsVisible(v) end,
 	})
-	W.WmDetails = wm.AddDropdown({
-		Name = "Details", Options = DETAIL_MODES, Default = W.WM.Mode,
+	W.WmDetails = wm.AddMultiDropdown({
+		Name = "Details", Options = DETAIL_MODES, Default = W.WM.GetModes(),
 		Flag = "__ZeninWmDetails",
-		Callback = function(v) W.WM.Mode = v end,
+		Callback = function(v) W.WM.SetModes(v) end,
 	})
 	return api
 end
