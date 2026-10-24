@@ -337,6 +337,214 @@ local function FromHex(hex)
 	return Color3.fromRGB(r, g, b)
 end
 
+local Crypto = {}
+do
+	local band, bor, bxor, bnot = bit32.band, bit32.bor, bit32.bxor, bit32.bnot
+	local rrotate, lrotate, rshift, lshift = bit32.rrotate, bit32.lrotate, bit32.rshift, bit32.lshift
+	local byte, char, concat = string.byte, string.char, table.concat
+	local M = 0xffffffff
+
+	local K = {
+		0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+		0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+		0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+		0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+		0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+		0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+		0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+		0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+	}
+
+	local function U32BE(n)
+		return char(band(rshift(n, 24), 255), band(rshift(n, 16), 255), band(rshift(n, 8), 255), band(n, 255))
+	end
+
+	function Crypto.Sha256(msg)
+		local len = #msg
+		local bits = len * 8
+		msg = msg .. "\128" .. string.rep("\0", (55 - len) % 64) .. U32BE(math.floor(bits / 4294967296)) .. U32BE(bits % 4294967296)
+		local H1, H2, H3, H4 = 0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a
+		local H5, H6, H7, H8 = 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+		local w = {}
+		for chunk = 1, #msg, 64 do
+			for i = 0, 15 do
+				local a, b, c, d = byte(msg, chunk + i * 4, chunk + i * 4 + 3)
+				w[i] = bor(lshift(a, 24), lshift(b, 16), lshift(c, 8), d)
+			end
+			for i = 16, 63 do
+				local v15, v2 = w[i - 15], w[i - 2]
+				local s0 = bxor(rrotate(v15, 7), rrotate(v15, 18), rshift(v15, 3))
+				local s1 = bxor(rrotate(v2, 17), rrotate(v2, 19), rshift(v2, 10))
+				w[i] = band(w[i - 16] + s0 + w[i - 7] + s1, M)
+			end
+			local a, b, c, d, e, f, g, h = H1, H2, H3, H4, H5, H6, H7, H8
+			for i = 0, 63 do
+				local s1 = bxor(rrotate(e, 6), rrotate(e, 11), rrotate(e, 25))
+				local ch = bxor(band(e, f), band(bnot(e), g))
+				local t1 = h + s1 + ch + K[i + 1] + w[i]
+				local s0 = bxor(rrotate(a, 2), rrotate(a, 13), rrotate(a, 22))
+				local maj = bxor(band(a, b), band(a, c), band(b, c))
+				h, g, f, e, d, c, b, a = g, f, e, band(d + t1, M), c, b, a, band(t1 + s0 + maj, M)
+			end
+			H1, H2, H3, H4 = band(H1 + a, M), band(H2 + b, M), band(H3 + c, M), band(H4 + d, M)
+			H5, H6, H7, H8 = band(H5 + e, M), band(H6 + f, M), band(H7 + g, M), band(H8 + h, M)
+		end
+		return U32BE(H1) .. U32BE(H2) .. U32BE(H3) .. U32BE(H4) .. U32BE(H5) .. U32BE(H6) .. U32BE(H7) .. U32BE(H8)
+	end
+
+	local function Xor(a, b)
+		local out = table.create(#a)
+		for i = 1, #a do out[i] = char(bxor(byte(a, i), byte(b, i))) end
+		return concat(out)
+	end
+
+	function Crypto.HmacKey(key)
+		if #key > 64 then key = Crypto.Sha256(key) end
+		key = key .. string.rep("\0", 64 - #key)
+		local ipad, opad = Xor(key, string.rep("\54", 64)), Xor(key, string.rep("\92", 64))
+		return function(msg)
+			return Crypto.Sha256(opad .. Crypto.Sha256(ipad .. msg))
+		end
+	end
+
+	function Crypto.Hmac(key, msg)
+		return Crypto.HmacKey(key)(msg)
+	end
+
+	function Crypto.Pbkdf2(pass, salt, iterations, length)
+		local prf = Crypto.HmacKey(pass)
+		local out = {}
+		for block = 1, math.ceil(length / 32) do
+			local u = prf(salt .. U32BE(block))
+			local t = {byte(u, 1, 32)}
+			for _ = 2, iterations do
+				u = prf(u)
+				for i = 1, 32 do t[i] = bxor(t[i], byte(u, i)) end
+			end
+			out[block] = char(table.unpack(t))
+		end
+		return concat(out):sub(1, length)
+	end
+
+	local function LE32(s, i)
+		local a, b, c, d = byte(s, i, i + 3)
+		return a + b * 256 + c * 65536 + d * 16777216
+	end
+
+	local function QR(x, a, b, c, d)
+		x[a] = band(x[a] + x[b], M) x[d] = lrotate(bxor(x[d], x[a]), 16)
+		x[c] = band(x[c] + x[d], M) x[b] = lrotate(bxor(x[b], x[c]), 12)
+		x[a] = band(x[a] + x[b], M) x[d] = lrotate(bxor(x[d], x[a]), 8)
+		x[c] = band(x[c] + x[d], M) x[b] = lrotate(bxor(x[b], x[c]), 7)
+	end
+
+	function Crypto.ChaCha20(key, nonce, counter, data)
+		local init = {0x61707865, 0x3320646e, 0x79622d32, 0x6b206574}
+		for i = 0, 7 do init[5 + i] = LE32(key, i * 4 + 1) end
+		init[13] = counter
+		for i = 0, 2 do init[14 + i] = LE32(nonce, i * 4 + 1) end
+		local out, x, ks = {}, {}, {}
+		for pos = 1, #data, 64 do
+			for i = 1, 16 do x[i] = init[i] end
+			for _ = 1, 10 do
+				QR(x, 1, 5, 9, 13) QR(x, 2, 6, 10, 14) QR(x, 3, 7, 11, 15) QR(x, 4, 8, 12, 16)
+				QR(x, 1, 6, 11, 16) QR(x, 2, 7, 12, 13) QR(x, 3, 8, 9, 14) QR(x, 4, 5, 10, 15)
+			end
+			for i = 1, 16 do
+				local v = band(x[i] + init[i], M)
+				local j = (i - 1) * 4
+				ks[j + 1], ks[j + 2], ks[j + 3], ks[j + 4] = band(v, 255), band(rshift(v, 8), 255), band(rshift(v, 16), 255), rshift(v, 24)
+			end
+			for j = 0, math.min(63, #data - pos) do
+				out[#out + 1] = char(bxor(byte(data, pos + j), ks[j + 1]))
+			end
+			init[13] = band(init[13] + 1, M)
+		end
+		return concat(out)
+	end
+
+	local B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+	local B64R = {}
+	for i = 1, 64 do B64R[byte(B64, i)] = i - 1 end
+
+	function Crypto.Base64(s)
+		local out = {}
+		for i = 1, #s, 3 do
+			local a, b, c = byte(s, i, i + 2)
+			local n = a * 65536 + (b or 0) * 256 + (c or 0)
+			local c1, c2 = rshift(n, 18) + 1, band(rshift(n, 12), 63) + 1
+			local c3, c4 = band(rshift(n, 6), 63) + 1, band(n, 63) + 1
+			out[#out + 1] = B64:sub(c1, c1) .. B64:sub(c2, c2)
+				.. (b and B64:sub(c3, c3) or "=") .. (c and B64:sub(c4, c4) or "=")
+		end
+		return concat(out)
+	end
+
+	function Crypto.Unbase64(s)
+		s = (string.gsub(s, "[^%w%+/=]", ""))
+		if #s % 4 ~= 0 then return nil end
+		local out = {}
+		for i = 1, #s, 4 do
+			local a, b, c, d = byte(s, i, i + 3)
+			local va, vb, vc, vd = B64R[a], B64R[b], B64R[c], B64R[d]
+			if not (va and vb) or (not vc and c ~= 61) or (not vd and d ~= 61) then return nil end
+			local n = va * 262144 + vb * 4096 + (vc or 0) * 64 + (vd or 0)
+			out[#out + 1] = char(rshift(n, 16))
+			if c ~= 61 then out[#out + 1] = char(band(rshift(n, 8), 255)) end
+			if d ~= 61 then out[#out + 1] = char(band(n, 255)) end
+		end
+		return concat(out)
+	end
+
+	local counter = 0
+	function Crypto.RandomBytes(n)
+		local out = ""
+		while #out < n do
+			counter = counter + 1
+			local seed = {tostring(os.clock()), tostring(os.time()), tostring(counter), tostring(math.random())}
+			pcall(function() table.insert(seed, game:GetService("HttpService"):GenerateGUID(false)) end)
+			pcall(function() table.insert(seed, tostring(Random.new():NextNumber())) end)
+			out = out .. Crypto.Sha256(concat(seed, "|"))
+		end
+		return out:sub(1, n)
+	end
+
+	local PREFIX = "ZENC:"
+	local ITERATIONS = 2000
+
+	function Crypto.MasterKey(pass)
+		return Crypto.Pbkdf2(pass, "ZeninLib.Configs", ITERATIONS, 32)
+	end
+
+	function Crypto.IsEncrypted(text)
+		return type(text) == "string" and text:sub(1, #PREFIX) == PREFIX
+	end
+
+	function Crypto.Encrypt(plain, master)
+		local salt, nonce = Crypto.RandomBytes(16), Crypto.RandomBytes(12)
+		local encKey = Crypto.Hmac(master, "enc" .. salt)
+		local macKey = Crypto.Hmac(master, "mac" .. salt)
+		local body = Crypto.ChaCha20(encKey, nonce, 1, plain)
+		local tag = Crypto.Hmac(macKey, salt .. nonce .. body)
+		return PREFIX .. Crypto.Base64(salt .. nonce .. body .. tag)
+	end
+
+	function Crypto.Decrypt(text, master)
+		if not Crypto.IsEncrypted(text) then return nil, "not encrypted" end
+		local raw = Crypto.Unbase64(text:sub(#PREFIX + 1))
+		if not raw or #raw < 60 then return nil, "corrupted" end
+		local salt, nonce = raw:sub(1, 16), raw:sub(17, 28)
+		local body, tag = raw:sub(29, -33), raw:sub(-32)
+		local macKey = Crypto.Hmac(master, "mac" .. salt)
+		local expect = Crypto.Hmac(macKey, salt .. nonce .. body)
+		local diff = 0
+		for i = 1, 32 do diff = bor(diff, bxor(byte(tag, i), byte(expect, i))) end
+		if diff ~= 0 then return nil, "wrong key or corrupted" end
+		return Crypto.ChaCha20(Crypto.Hmac(master, "enc" .. salt), nonce, 1, body)
+	end
+end
+
+
 local function MakeDraggable(W, handle, target, opts)
 	opts = opts or {}
 	local THRESH = 4
@@ -458,6 +666,7 @@ local function NewElement(W, S, kind, o, height)
 		Parent = S.Content,
 	})
 	local el = {
+		_win = W,
 		Type = kind,
 		Name = o.Name or o.Title,
 		Flag = o.Flag,
@@ -536,10 +745,32 @@ local function NewElement(W, S, kind, o, height)
 	return el, row
 end
 
+local function ApplyFlag(el, v)
+	if el._deserialize then
+		pcall(el._deserialize, v)
+	elseif el.Set then
+		pcall(el.Set, v)
+	end
+end
+
+local function SerializeFlag(el)
+	if el._serialize then return el._serialize() end
+	return el.Get()
+end
+
 local function Finish(el, o)
 	if el.Flag then Library.Flags[el.Flag] = el.Get() end
 	if o.DependsOn then el.DependsOn(o.DependsOn, o.InvertDependency) end
 	el._apply(false)
+	if el.Flag then
+		el._default = SerializeFlag(el)
+		local pending = el._win.PendingFlags
+		if pending and pending[el.Flag] ~= nil then
+			local v = pending[el.Flag]
+			pending[el.Flag] = nil
+			ApplyFlag(el, v)
+		end
+	end
 	return el
 end
 
@@ -560,7 +791,7 @@ local function AttachSettings(W, el, place)
 			ZIndex = 2,
 			Parent = el.Row,
 		})
-		Corner(gear, 3)
+		Corner(gear, 5)
 		local gs = Stroke(gear, WHITE, 1)
 		local isz = size >= 20 and 12 or 10
 		local gi = CreateIcon(gear, {"settings", "cog"}, isz, UDim2.new(0.5, -isz / 2, 0.5, -isz / 2))
@@ -702,7 +933,7 @@ local function OpenList(W, owner, btn, options, isSelected, onPick, multi)
 		ClipsDescendants = true,
 		Active = true,
 	})
-	Corner(popup, 3)
+	Corner(popup, 5)
 	Stroke(popup, T.DropdownBorder, 1)
 	local scrolls = #options > maxVisible
 	local list = Create("ScrollingFrame", {
@@ -1004,7 +1235,7 @@ local function AddDropdown(W, S, o, multi)
 		AutoButtonColor = false,
 		Parent = row,
 	})
-	Corner(btn, 3)
+	Corner(btn, 5)
 	local bs = Stroke(btn, WHITE, 1)
 	local valLbl = Label(btn, "", {Position = UDim2.fromOffset(7, 0), Size = UDim2.new(1, -24, 1, 0), Truncate = true})
 	local chev = CreateIcon(btn, {"chevron-down"}, 12, UDim2.new(1, -17, 0.5, -6))
@@ -1792,6 +2023,9 @@ local function NewPage(W, full)
 
 	function page.Update()
 		local maxS = page.canvas - BODY_H
+		if scroll.Visible and W.SetFade then
+			W.SetFade(maxS > 1 and scroll.CanvasPosition.Y < maxS - 1)
+		end
 		local show = scroll.Visible and maxS > 1
 		hit.Visible = show
 		if not show then return end
@@ -2392,6 +2626,13 @@ local function BuildShell(W)
 		}),
 		Parent = BottomFade,
 	})
+	BottomFade.BackgroundTransparency = 1
+	local fadeOn = false
+	function W.SetFade(on)
+		if on == fadeOn then return end
+		fadeOn = on
+		Tween(BottomFade, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = on and 0 or 1})
+	end
 
 	W.Fader = Create("Frame", {
 		Size = UDim2.new(1, 0, 0, BODY_H),
@@ -2852,11 +3093,370 @@ local function BuildSettings(W, o)
 	return api
 end
 
+local function BuildConfigManager(W, Window, o)
+	local CFG = {
+		Folder = o.ConfigFolder or Library.ConfigFolder,
+		Encrypt = false,
+		Key = nil,
+		BindToUser = false,
+		Interface = true,
+		Ignore = {},
+		Extra = {},
+		SaveHooks = {},
+		LoadHooks = {},
+		Active = nil,
+	}
+	local api = {}
+	local masterPass, masterKey
+
+	local function Clean(name)
+		name = tostring(name or "default"):gsub("^%s+", ""):gsub("%s+$", ""):gsub("%.cfg$", "")
+		name = name:gsub("[^%w%-_ %.]", "_")
+		if name == "" then name = "default" end
+		return name
+	end
+
+	local function EnsureFolder()
+		local f = CFG.Folder
+		if f == nil or f == "" then return nil end
+		if isfolder and makefolder then
+			local cur = ""
+			for part in string.gmatch(tostring(f), "[^/\\]+") do
+				cur = cur == "" and part or (cur .. "/" .. part)
+				local ok, exists = pcall(isfolder, cur)
+				if not (ok and exists) then pcall(makefolder, cur) end
+			end
+		end
+		return f
+	end
+
+	local function Path(name)
+		local f = EnsureFolder()
+		local file = Clean(name) .. ".cfg"
+		return f and (f .. "/" .. file) or file
+	end
+
+	local function AutoLoadPath()
+		local f = EnsureFolder()
+		return f and (f .. "/autoload.txt") or "zenin_autoload.txt"
+	end
+
+	local function Exists(path)
+		if not isfile then return false end
+		local ok, res = pcall(isfile, path)
+		return ok and res == true
+	end
+
+	local function ReadFile(path)
+		if not (readfile and Exists(path)) then return nil end
+		local ok, res = pcall(readfile, path)
+		if ok and type(res) == "string" then return res end
+		return nil
+	end
+
+	local function WriteFile(path, text)
+		if not writefile then return false, "writefile unsupported" end
+		local ok, err = pcall(writefile, path, text)
+		if ok then return true end
+		return false, tostring(err)
+	end
+
+	local function MasterKey()
+		local pass = tostring(CFG.Key or "ZeninLib")
+		if CFG.BindToUser and LocalPlayer then pass = pass .. "|" .. tostring(LocalPlayer.UserId) end
+		if pass ~= masterPass then
+			masterPass, masterKey = pass, Crypto.MasterKey(pass)
+		end
+		return masterKey
+	end
+
+	local function Included(flag)
+		if CFG.Ignore[flag] then return false end
+		if not CFG.Interface and flag:sub(1, 7) == "__Zenin" then return false end
+		return true
+	end
+
+	local function Refresh()
+		if W.RefreshConfigs then W.RefreshConfigs() end
+	end
+
+	local function Snapshot()
+		local data = {Format = "Zenin", Flags = {}, Data = {}}
+		if CFG.Interface then
+			data.Accent = ToHex(W.Accent)
+			data.AccentAlpha = W.AccentAlpha
+		end
+		for _, el in ipairs(W.Elements) do
+			if el.Flag and el.Get and Included(el.Flag) then
+				local ok, v = pcall(SerializeFlag, el)
+				if ok then data.Flags[el.Flag] = v end
+			end
+		end
+		for key, x in pairs(CFG.Extra) do
+			local ok, v = pcall(x.get)
+			if ok and v ~= nil then data.Data[key] = v end
+		end
+		for _, fn in ipairs(CFG.SaveHooks) do SafeCall(fn, data) end
+		return data
+	end
+
+	local function Apply(data)
+		if type(data) ~= "table" then return false, "invalid config" end
+		if CFG.Interface then
+			local c = type(data.Accent) == "string" and FromHex(data.Accent)
+			if c then W.SetAccent(c, tonumber(data.AccentAlpha)) end
+		end
+		local pending = {}
+		local flags = type(data.Flags) == "table" and data.Flags or {}
+		for flag, v in pairs(flags) do
+			if type(flag) == "string" and Included(flag) then
+				local el = Library.Options[flag]
+				if el and el._win == W then
+					ApplyFlag(el, v)
+				else
+					pending[flag] = v
+				end
+			end
+		end
+		W.PendingFlags = pending
+		local extra = type(data.Data) == "table" and data.Data or {}
+		for key, x in pairs(CFG.Extra) do
+			if extra[key] ~= nil then SafeCall(x.set, extra[key]) end
+		end
+		for _, fn in ipairs(CFG.LoadHooks) do SafeCall(fn, data) end
+		return true
+	end
+
+	local function Encode(data)
+		local ok, json = pcall(HttpService.JSONEncode, HttpService, data)
+		if not ok then return nil, "encode failed" end
+		if CFG.Encrypt then return Crypto.Encrypt(json, MasterKey()) end
+		return json
+	end
+
+	local function Decode(text)
+		if type(text) ~= "string" then return nil, "empty" end
+		text = text:gsub("^%s+", ""):gsub("%s+$", "")
+		if text == "" then return nil, "empty" end
+		if Crypto.IsEncrypted(text) then
+			local plain, err = Crypto.Decrypt(text, MasterKey())
+			if not plain then return nil, err end
+			text = plain
+		end
+		local ok, data = pcall(HttpService.JSONDecode, HttpService, text)
+		if not ok or type(data) ~= "table" then return nil, "invalid config" end
+		return data
+	end
+
+	Method(api, "Configure", function(co)
+		co = co or {}
+		if co.Folder ~= nil then CFG.Folder = co.Folder ~= "" and co.Folder or nil end
+		if co.Encrypt ~= nil then CFG.Encrypt = co.Encrypt == true end
+		if co.Key ~= nil then
+			CFG.Key = co.Key
+			if co.Encrypt == nil then CFG.Encrypt = true end
+		end
+		if co.BindToUser ~= nil then CFG.BindToUser = co.BindToUser == true end
+		if co.Interface ~= nil then CFG.Interface = co.Interface ~= false end
+		if type(co.Ignore) == "table" then
+			for _, f in ipairs(co.Ignore) do CFG.Ignore[f] = true end
+		end
+		Refresh()
+	end)
+
+	Method(api, "Save", function(name)
+		name = Clean(name)
+		local text, err = Encode(Snapshot())
+		if not text then return false, err end
+		local ok, werr = WriteFile(Path(name), text)
+		if not ok then return false, werr end
+		CFG.Active = name
+		Refresh()
+		return true
+	end)
+
+	Method(api, "Load", function(name)
+		name = Clean(name)
+		if not readfile then return false, "readfile unsupported" end
+		local text = ReadFile(Path(name))
+		if not text then return false, "not found" end
+		local data, err = Decode(text)
+		if not data then return false, err end
+		local ok, aerr = Apply(data)
+		if not ok then return false, aerr end
+		CFG.Active = name
+		Refresh()
+		return true
+	end)
+
+	Method(api, "Delete", function(name)
+		name = Clean(name)
+		local path = Path(name)
+		if not (delfile and Exists(path)) then return false, "not found" end
+		if not pcall(delfile, path) then return false, "delete failed" end
+		if CFG.Active == name then CFG.Active = nil end
+		if api.GetAutoLoad() == name then api.SetAutoLoad(nil) end
+		Refresh()
+		return true
+	end)
+
+	Method(api, "Exists", function(name) return Exists(Path(name)) end)
+
+	Method(api, "Rename", function(old, new)
+		old, new = Clean(old), Clean(new)
+		if old == new then return true end
+		if Exists(Path(new)) then return false, "already exists" end
+		local text = ReadFile(Path(old))
+		if not text then return false, "not found" end
+		local ok, err = WriteFile(Path(new), text)
+		if not ok then return false, err end
+		pcall(delfile, Path(old))
+		if CFG.Active == old then CFG.Active = new end
+		if api.GetAutoLoad() == old then api.SetAutoLoad(new) end
+		Refresh()
+		return true
+	end)
+
+	Method(api, "Duplicate", function(name, new)
+		name = Clean(name)
+		new = Clean(new or api.UniqueName(name))
+		local text = ReadFile(Path(name))
+		if not text then return false, "not found" end
+		if Exists(Path(new)) then return false, "already exists" end
+		local ok, err = WriteFile(Path(new), text)
+		Refresh()
+		return ok, err
+	end)
+
+	Method(api, "List", function()
+		local out = {}
+		if not listfiles then return out end
+		local files
+		local f = EnsureFolder()
+		for _, dir in ipairs(f and {f} or {"", ".", "./"}) do
+			local ok, res = pcall(listfiles, dir)
+			if ok and type(res) == "table" then
+				files = res
+				break
+			end
+		end
+		if not files then return out end
+		local seen = {}
+		for _, file in ipairs(files) do
+			local n = tostring(file):match("([^/\\]+)%.cfg$")
+			if n and not seen[n] then
+				seen[n] = true
+				table.insert(out, n)
+			end
+		end
+		table.sort(out)
+		return out
+	end)
+
+	Method(api, "UniqueName", function(base)
+		base = Clean(base or "config")
+		if not Exists(Path(base)) then return base end
+		local k = 1
+		while Exists(Path(base .. "-" .. k)) do k = k + 1 end
+		return base .. "-" .. k
+	end)
+
+	Method(api, "IsEncrypted", function(name)
+		return Crypto.IsEncrypted(ReadFile(Path(name)))
+	end)
+
+	Method(api, "Export", function(name)
+		if name ~= nil then
+			local text = ReadFile(Path(name))
+			if not text then return nil, "not found" end
+			local data, err = Decode(text)
+			if not data then return nil, err end
+			return Encode(data)
+		end
+		return Encode(Snapshot())
+	end)
+
+	Method(api, "Import", function(text, name)
+		local data, err = Decode(text)
+		if not data then return false, err end
+		if name == nil then return Apply(data) end
+		name = Clean(name)
+		local enc, eerr = Encode(data)
+		if not enc then return false, eerr end
+		local ok, werr = WriteFile(Path(name), enc)
+		Refresh()
+		return ok, werr
+	end)
+
+	Method(api, "Get", Snapshot)
+	Method(api, "Apply", function(data)
+		local ok, err = Apply(data)
+		Refresh()
+		return ok, err
+	end)
+
+	Method(api, "Reset", function()
+		for _, el in ipairs(W.Elements) do
+			if el.Flag and el._default ~= nil and el.Flag:sub(1, 7) ~= "__Zenin" and not CFG.Ignore[el.Flag] then
+				ApplyFlag(el, el._default)
+			end
+		end
+		W.PendingFlags = nil
+		CFG.Active = nil
+		Refresh()
+	end)
+
+	Method(api, "SetAutoLoad", function(name)
+		local path = AutoLoadPath()
+		if name == nil or name == false then
+			if delfile and Exists(path) then pcall(delfile, path) end
+		else
+			WriteFile(path, Clean(name))
+		end
+		Refresh()
+	end)
+	Method(api, "GetAutoLoad", function()
+		local text = ReadFile(AutoLoadPath())
+		if not text or text == "" then return nil end
+		return Clean(text)
+	end)
+	Method(api, "LoadAutoLoad", function()
+		local name = api.GetAutoLoad()
+		if not name then return false, "no autoload" end
+		return api.Load(name)
+	end)
+
+	Method(api, "SetFolder", function(folder) api.Configure({Folder = folder or ""}) end)
+	Method(api, "GetFolder", function() return CFG.Folder end)
+	Method(api, "SetEncryption", function(on, key)
+		api.Configure({Encrypt = on ~= false, Key = key})
+	end)
+	Method(api, "IsEncryptionEnabled", function() return CFG.Encrypt end)
+	Method(api, "Ignore", function(...)
+		for _, f in ipairs({...}) do CFG.Ignore[f] = true end
+	end)
+	Method(api, "Unignore", function(...)
+		for _, f in ipairs({...}) do CFG.Ignore[f] = nil end
+	end)
+	Method(api, "Register", function(key, get, set)
+		CFG.Extra[key] = {get = get, set = set}
+	end)
+	Method(api, "OnSave", function(fn) table.insert(CFG.SaveHooks, fn) end)
+	Method(api, "OnLoad", function(fn) table.insert(CFG.LoadHooks, fn) end)
+	Method(api, "GetActive", function() return CFG.Active end)
+	Method(api, "Path", function(name) return Path(name) end)
+	Method(api, "Open", function() Window.SelectConfigs() end)
+	Method(api, "Refresh", Refresh)
+
+	if type(o.Configs) == "table" then api.Configure(o.Configs) end
+	return api
+end
+
 local function BuildConfigs(W, Window)
+	local Configs = Window.Configs
 	local page = NewPage(W, true)
 	W.ConfigPage = page
 	local api = AttachSections(W, {}, page)
-	local state = {active = nil}
 
 	local btn = Create("TextButton", {
 		Size = UDim2.fromOffset(26, 27),
@@ -2876,6 +3476,9 @@ local function BuildConfigs(W, Window)
 	local function Note(text)
 		Window.Notify({Title = "Configs", Content = text, Icon = {"file-text", "file"}, Duration = 2.5})
 	end
+	local function Result(ok, err, success, fail)
+		Note(ok and success or (fail .. ": " .. tostring(err)))
+	end
 
 	local actions = NewSection(W, page, {Name = "Actions"})
 	local box = Create("TextBox", {
@@ -2887,6 +3490,7 @@ local function BuildConfigs(W, Window)
 		TextSize = TEXT,
 		Weight = "Medium",
 		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		Parent = actions._raw(25),
 	})
 	Corner(box, 3)
@@ -2899,8 +3503,8 @@ local function BuildConfigs(W, Window)
 		box.PlaceholderColor3 = T.TextDim
 	end, box)
 
-	local function WideButton(sec, text, icon, fn)
-		local b = Create("TextButton", {Size = UDim2.fromScale(1, 1), BorderSizePixel = 0, Text = "", AutoButtonColor = false, Parent = sec._raw(27)})
+	local function WideButton(parent, text, icon, fn)
+		local b = Create("TextButton", {Size = UDim2.fromScale(1, 1), BorderSizePixel = 0, Text = "", AutoButtonColor = false, Parent = parent})
 		Corner(b, 3)
 		local st = Stroke(b, WHITE, 1)
 		local content = Create("Frame", {
@@ -2937,14 +3541,21 @@ local function BuildConfigs(W, Window)
 		return b
 	end
 
+	local function ButtonRow(sec, left, right)
+		local rowFrame = sec._raw(27)
+		local l = Create("Frame", {Size = UDim2.new(0.5, -3, 1, 0), BackgroundTransparency = 1, Parent = rowFrame})
+		local r = Create("Frame", {Size = UDim2.new(0.5, -3, 1, 0), Position = UDim2.new(0.5, 3, 0, 0), BackgroundTransparency = 1, Parent = rowFrame})
+		WideButton(l, left[1], left[2], left[3])
+		WideButton(r, right[1], right[2], right[3])
+	end
+
 	local list = NewSection(W, page, {Name = "Config List"})
-	local activeLbl = Label(list._raw(16), "Active: None")
+	local activeLbl = Label(list._raw(16), "Active: None", {Truncate = true})
 	W.Paint(activeLbl, "TextColor3", "TextGray")
 	local holder = list._raw(0)
 	Create("UIListLayout", {Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder, Parent = holder})
 
-	local Refresh
-	local function IconButton(parent, x, icon, onClick)
+	local function IconButton(parent, x, icon, onClick, isOn)
 		local b = Create("TextButton", {
 			Size = UDim2.fromOffset(24, 24),
 			Position = UDim2.new(1, x, 0.5, -12),
@@ -2953,60 +3564,78 @@ local function BuildConfigs(W, Window)
 			Parent = parent,
 		})
 		local ic = CreateIcon(b, icon, 12, UDim2.new(0.5, -6, 0.5, -6))
-		local st = {hover = false}
-		function st.Paint()
+		local hover = false
+		local function Paint()
 			local T = W.Theme
-			ic.ImageColor3 = st.hover and T.Text or T.NavGray
+			if isOn and isOn() then
+				ic.ImageColor3 = W.Accent
+			else
+				ic.ImageColor3 = hover and T.Text or T.NavGray
+			end
 		end
-		W.Bind(st.Paint, b)
-		b.MouseEnter:Connect(function() st.hover = true st.Paint() end)
-		b.MouseLeave:Connect(function() st.hover = false st.Paint() end)
-		b.MouseButton1Click:Connect(function() onClick(st) end)
-		return st
+		W.Bind(Paint, b)
+		b.MouseEnter:Connect(function() hover = true Paint() end)
+		b.MouseLeave:Connect(function() hover = false Paint() end)
+		b.MouseButton1Click:Connect(onClick)
+		return b
 	end
 
+	local autoName
 	local function Item(i, name)
 		local row = Create("Frame", {Size = UDim2.new(1, 0, 0, 45), BorderSizePixel = 0, LayoutOrder = i, Parent = holder})
 		Corner(row, 3)
 		W.Paint(row, "BackgroundColor3", "DropdownBg")
-		local title = Label(row, name .. ".cfg", {Position = UDim2.fromOffset(14, 7), Size = UDim2.new(1, -110, 0, 16), Weight = "SemiBold", Truncate = true})
-		local idx = Label(row, tostring(i), {Position = UDim2.fromOffset(14, 24), Size = UDim2.new(1, -110, 0, 14), TextSize = 10})
+		local title = Label(row, name .. ".cfg", {Position = UDim2.fromOffset(14, 7), Size = UDim2.new(1, -170, 0, 16), Weight = "SemiBold", Truncate = true})
+		local info = tostring(i)
+		if autoName == name then info = info .. "  ·  autoload" end
+		local idx = Label(row, info, {Position = UDim2.fromOffset(14, 24), Size = UDim2.new(1, -170, 0, 14), TextSize = 10})
 		W.Bind(function(T, accent)
-			title.TextColor3 = (state.active == name) and accent or T.Text
+			title.TextColor3 = (Configs.GetActive() == name) and accent or T.Text
 			idx.TextColor3 = T.TextDim
 		end, row)
 
-		IconButton(row, -92, {"download", "import"}, function()
-			local ok, err = Window.LoadConfig(name)
-			if ok then
-				state.active = name
-				Refresh()
-				Note("Loaded " .. name .. ".cfg")
-			else
-				Note("Load failed: " .. tostring(err))
-			end
+		IconButton(row, -148, {"download", "import"}, function()
+			local ok, err = Configs.Load(name)
+			Result(ok, err, "Loaded " .. name .. ".cfg", "Load failed")
 		end)
-		IconButton(row, -64, {"save"}, function()
-			local ok, err = Window.SaveConfig(name)
-			Note(ok and ("Saved " .. name .. ".cfg") or ("Save failed: " .. tostring(err)))
+		IconButton(row, -120, {"save"}, function()
+			local ok, err = Configs.Save(name)
+			Result(ok, err, "Saved " .. name .. ".cfg", "Save failed")
+		end)
+		IconButton(row, -92, {"star"}, function()
+			if autoName == name then
+				Configs.SetAutoLoad(nil)
+				Note("Autoload disabled")
+			else
+				Configs.SetAutoLoad(name)
+				Note(name .. ".cfg will load automatically")
+			end
+		end, function() return autoName == name end)
+		IconButton(row, -64, {"copy", "clipboard"}, function()
+			local text, err = Configs.Export(name)
+			if not text then
+				Note("Export failed: " .. tostring(err))
+			elseif setclipboard then
+				pcall(setclipboard, text)
+				Note("Copied " .. name .. ".cfg to clipboard")
+			else
+				box.Text = text
+				Note("Clipboard unsupported, config placed in the name field")
+			end
 		end)
 		IconButton(row, -36, {"trash-2", "trash"}, function()
-			if not Window.DeleteConfig(name) then
-				Note("Delete failed: " .. name .. ".cfg")
-				return
-			end
-			if state.active == name then state.active = nil end
-			Refresh()
-			Note("Deleted " .. name .. ".cfg")
+			local ok, err = Configs.Delete(name)
+			Result(ok, err, "Deleted " .. name .. ".cfg", "Delete failed")
 		end)
 	end
 
-	function Refresh()
+	local function Refresh()
 		for _, ch in ipairs(holder:GetChildren()) do
 			if ch:IsA("GuiObject") then ch:Destroy() end
 		end
 		W.Prune()
-		local names = Window.ListConfigs()
+		autoName = Configs.GetAutoLoad()
+		local names = Configs.List()
 		if #names == 0 then
 			local empty = Label(holder, "No configs yet", {Size = UDim2.new(1, 0, 0, 20)})
 			W.Paint(empty, "TextColor3", "TextDim")
@@ -3015,36 +3644,43 @@ local function BuildConfigs(W, Window)
 			for i, name in ipairs(names) do Item(i, name) end
 			holder.Size = UDim2.new(1, 0, 0, #names * 45 + (#names - 1) * 5)
 		end
-		activeLbl.Text = "Active: " .. (state.active and (state.active .. ".cfg") or "None")
+		local active = Configs.GetActive()
+		local text = "Active: " .. (active and (active .. ".cfg") or "None")
+		if autoName then text = text .. "   Autoload: " .. autoName .. ".cfg" end
+		activeLbl.Text = text
 	end
 
-	local function Unique(name)
-		local taken = {}
-		for _, n in ipairs(Window.ListConfigs()) do taken[n] = true end
-		if not taken[name] then return name end
-		local k = 1
-		while taken[name .. "-" .. k] do k = k + 1 end
-		return name .. "-" .. k
+	local function BoxName()
+		local text = tostring(box.Text):gsub("^%s+", ""):gsub("%s+$", "")
+		return text
 	end
 
-	WideButton(actions, "Create New", {"file-plus", "file"}, function()
-		local name = tostring(box.Text):gsub("^%s+", ""):gsub("%s+$", ""):gsub("%.cfg$", ""):gsub("[^%w%-_ ]", "_")
-		if name == "" then name = "config_" .. (#Window.ListConfigs() + 1) end
-		name = Unique(name)
-		local ok, err = Window.SaveConfig(name)
-		if ok then
-			state.active = name
-			box.Text = ""
-			Refresh()
-			Note("Created " .. name .. ".cfg")
-		else
-			Note("Create failed: " .. tostring(err))
+	ButtonRow(actions, {"Create New", {"file-plus", "file"}, function()
+		local name = BoxName()
+		if name == "" or #name > 64 then name = "config_" .. (#Configs.List() + 1) end
+		name = Configs.UniqueName(name)
+		local ok, err = Configs.Save(name)
+		if ok then box.Text = "" end
+		Result(ok, err, "Created " .. name .. ".cfg", "Create failed")
+	end}, {"Refresh List", {"refresh-cw"}, function()
+		Refresh()
+	end})
+	ButtonRow(actions, {"Import", {"clipboard-paste", "clipboard"}, function()
+		local text = BoxName()
+		if #text <= 64 then
+			local ok, clip = pcall(function() return getclipboard and getclipboard() end)
+			if ok and type(clip) == "string" and clip ~= "" then text = clip end
 		end
-	end)
-	WideButton(actions, "Refresh List", {"refresh-cw"}, function() Refresh() end)
+		local name = Configs.UniqueName("imported")
+		local ok, err = Configs.Import(text, name)
+		if ok then box.Text = "" end
+		Result(ok, err, "Imported as " .. name .. ".cfg", "Import failed")
+	end}, {"Reset to Defaults", {"rotate-ccw", "undo"}, function()
+		Configs.Reset()
+		Note("Settings reset to defaults")
+	end})
 
 	Refresh()
-	W.ConfigState = state
 	W.RefreshConfigs = Refresh
 	return api
 end
@@ -3344,97 +3980,21 @@ local function CreateWindow(o)
 	Method(Window, "Notify", function(x) return Notify(W, x) end)
 	Method(Window, "ClosePopups", function() W.ClosePopup() end)
 
-	Method(Window, "GetConfig", function()
-		local data = {Flags = {}, Accent = ToHex(W.Accent), AccentAlpha = W.AccentAlpha}
-		for _, el in ipairs(W.Elements) do
-			if el.Flag and el.Get then
-				data.Flags[el.Flag] = el._serialize and el._serialize() or el.Get()
-			end
-		end
-		return data
-	end)
-	Method(Window, "ApplyConfig", function(data)
-		if type(data) ~= "table" then return false end
-		local c = data.Accent and FromHex(data.Accent)
-		if c then W.SetAccent(c, data.AccentAlpha) end
-		for flag, v in pairs(data.Flags or {}) do
-			local el = Library.Options[flag]
-			if el and el._deserialize then
-				pcall(el._deserialize, v)
-			elseif el and el.Set then
-				pcall(el.Set, v)
-			end
-		end
-		return true
-	end)
-	local function Folder()
-		local f = W.ConfigFolder
-		if f == nil or f == "" then return nil end
-		if isfolder and makefolder then
-			local ok, exists = pcall(isfolder, f)
-			if not (ok and exists) then pcall(makefolder, f) end
-		end
-		return f
-	end
-	local function Path(name)
-		local f = Folder()
-		local file = tostring(name or "default") .. ".cfg"
-		return f and (f .. "/" .. file) or file
-	end
-	Method(Window, "SaveConfig", function(name)
-		if not writefile then return false, "writefile unsupported" end
-		local ok, err = pcall(function()
-			writefile(Path(name), HttpService:JSONEncode(Window.GetConfig()))
-		end)
-		return ok, err
-	end)
-	Method(Window, "LoadConfig", function(name)
-		if not (readfile and isfile) then return false, "readfile unsupported" end
-		local path = Path(name)
-		local okf, exists = pcall(isfile, path)
-		if not (okf and exists) then return false, "not found" end
-		local ok, data = pcall(function() return HttpService:JSONDecode(readfile(path)) end)
-		if not ok then return false, data end
-		return Window.ApplyConfig(data)
-	end)
-	Method(Window, "DeleteConfig", function(name)
-		local path = Path(name)
-		if not (delfile and isfile) then return false end
-		local okf, exists = pcall(isfile, path)
-		if not (okf and exists) then return false end
-		return (pcall(delfile, path))
-	end)
-	Method(Window, "ListConfigs", function()
-		local out = {}
-		if not listfiles then return out end
-		local files
-		local f = Folder()
-		for _, dir in ipairs(f and {f} or {"", ".", "./"}) do
-			local ok, res = pcall(listfiles, dir)
-			if ok and type(res) == "table" then
-				files = res
-				break
-			end
-		end
-		if not files then return out end
-		local seen = {}
-		for _, file in ipairs(files) do
-			local n = tostring(file):match("([^/\\]+)%.cfg$")
-			if n and not seen[n] then
-				seen[n] = true
-				table.insert(out, n)
-			end
-		end
-		table.sort(out)
-		return out
-	end)
+	local Configs = BuildConfigManager(W, Window, o)
+	Window.Configs = Configs
+	Method(Window, "GetConfig", function() return Configs.Get() end)
+	Method(Window, "ApplyConfig", function(data) return Configs.Apply(data) end)
+	Method(Window, "SaveConfig", function(name) return Configs.Save(name) end)
+	Method(Window, "LoadConfig", function(name) return Configs.Load(name) end)
+	Method(Window, "DeleteConfig", function(name) return Configs.Delete(name) end)
+	Method(Window, "ListConfigs", function() return Configs.List() end)
 
 	Method(Window, "EnableConfigs", function(co)
+		if type(co) == "table" then Configs.Configure(co) end
 		if W.ConfigPage then return W.ConfigApi end
-		co = co or {}
-		if co.Folder then W.ConfigFolder = co.Folder end
 		W.ConfigApi = BuildConfigs(W, Window)
 		W.RefreshNav(true)
+		if not (type(co) == "table" and co.AutoLoad == false) then Configs.LoadAutoLoad() end
 		return W.ConfigApi
 	end)
 	Method(Window, "SelectConfigs", function()
@@ -3445,7 +4005,7 @@ local function CreateWindow(o)
 		W.RefreshConfigs()
 	end)
 	Method(Window, "RefreshConfigs", function() if W.RefreshConfigs then W.RefreshConfigs() end end)
-	Method(Window, "GetActiveConfig", function() return W.ConfigState and W.ConfigState.active end)
+	Method(Window, "GetActiveConfig", function() return Configs.GetActive() end)
 	Method(Window, "GetStats", function()
 		return {
 			Listeners = #W.Listeners,
