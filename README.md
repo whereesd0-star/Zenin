@@ -131,20 +131,18 @@ Window:SetTheme("Ocean")
 
 ## Rochess
 
-`Rochess.lua` uses ZeninLib for its engine, automation, appearance, and profile controls.
-It requires the Roblox game's `ReplicatedStorage.Chess` and `ChessClient` modules;
-it is not a standalone chess engine. The UI library is fetched from this repository.
-HTTP access and `loadstring` must be available in the runtime. Profile persistence
-and clipboard support are optional; unavailable file APIs leave profiles in memory.
+`Rochess.lua` is a chess assistant built on ZeninLib. It requires the Roblox game's
+`ReplicatedStorage.Chess` and `ChessClient` modules, plus HTTP access and `loadstring`.
 
-- **End**: toggle autoplay; **Home**: toggle arrows.
-- **PageUp / +**: toggle the window; **PageDown**: switch analysis source.
-- **Insert**: copy the position and moves when clipboard access is available.
-- Existing profiles remain in `rocheese_profiles_v2.json`.
+- **Main**: best move with evaluation and alternatives (**Play**), game status and clocks
+  (**Copy** position), autoplay, move arrows, preset (Legit / Raj / Custom), practice game.
+- **Engine**: analysis source, move choice, rating, noise and blunder chance.
+- **Automation**: think-time range and input humanization.
+- Theme, accent, and menu size use ZeninLib's built-in settings. Settings are saved with
+  ZeninLib configs in the `RoCheese` folder; **Settings → RoCheese → Unload** stops the script.
 
-Analysis results are tied to the session and complete move history, so stale searches
-cannot overwrite the current position. Move dispatch validates legality and uses
-one handler per attempt to avoid duplicate submissions.
+Hotkeys: **PageUp / +** menu, **End** autoplay, **Home** arrows, **PageDown** analysis
+source, **Insert** copy position.
 
 ### Regression checks
 
@@ -153,6 +151,6 @@ npm ci
 npm test
 ```
 
-The tests execute extracted script logic in a mocked Lua runtime, covering stale
-analysis, failed engines, move validation, and concurrent move attempts. The script is also syntax-checked with the Lua parser. These checks do not
-replace live verification of the Roblox UI, game modules, or executor APIs.
+The tests run extracted script logic in a mocked Lua runtime: stale analysis, engine
+failures, move validation, concurrent move attempts, and the ZeninLib control bindings.
+They do not replace live verification in Roblox.

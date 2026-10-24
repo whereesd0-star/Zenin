@@ -48,7 +48,7 @@ test('autoplay is single-flight and discards stale or disabled work', () => run(
 local picks, plays = 0, 0
 local function pickMove() picks=picks+1; return "e2e4" end
 local function playUci() plays=plays+1; return true end
-` + section('local function autopilotTick(session, ply)', '-- gui') + `
+` + section('local function autopilotTick(session, ply)', '-- ui ---') + `
 autopilotTick(session,0); autopilotTick(session,0)
 assert(#queue==1)
 RUNTIME.AUTO=false; drain(); assert(plays==0 and not S.playPending)
@@ -129,70 +129,92 @@ calls=0
 assert(rankContinuations("",{},nil,function() return false end)==nil and calls==0)
 `));
 
-test('Zenin UI adapter builds tabs, updates readouts, preserves zoom, and cleans up', () => run(common + `
+test('Zenin UI binds controls to runtime state, syncs silently, and cleans up', () => run(common + `
 math.clamp=function(v,lo,hi) return math.max(lo,math.min(hi,v)) end
-Color3={fromRGB=function(r,g,b) return {r,g,b} end}
-UDim2={fromScale=function(x,y) return {x=x,y=y} end}
-Vector2={new=function(x,y) return {X=x,Y=y} end}
-workspace={CurrentCamera=nil}
 loadstring=load
+local disposed=false
 local disposers={}
 local function cleanup(fn) table.insert(disposers,fn) end
-local GENV={__RoCheeseDispose=function() active=false end}
-local store={active="1",profiles={},names={}}
-local configNotice="Ready"
-local DEFAULTS={}
-local function validated(t) return t end
-local function persistProfiles() return "Saved" end
-local function applyConfig() end
-local function clearArrows() end
-local HttpService={GenerateGUID=function() return "profile-id" end}
-local pg, screen, frame = {}, {}, {}
-screen.Parent=pg; frame.Parent=screen
-function screen:FindFirstChild(name) if name=="Window" then return frame end end
-function pg:FindFirstChild(name) if name=="RoCheesePanel" then return screen end end
-local LocalPlayer={FindFirstChildOfClass=function() return pg end}
-local allElements, tabs = {}, {}
-local function element(o)
- local e={value=o.Default, name=o.Name, callback=o.Callback}
- function e:Set(v,silent) self.value=v; if not silent and self.callback then self.callback(v) end end
+local function dispose() if disposed then return end disposed=true for _,fn in ipairs(disposers) do fn() end end
+local GENV={}
+local cleared=0
+local function clearArrows() cleared=cleared+1 end
+local Enum={KeyCode={PageUp="PageUp"}}
+local tabs, elements, flags = {}, {}, {}
+local function element(kind, o)
+ local e={kind=kind,value=o.Default,name=o.Name,description=o.Description,enabled=true,o=o}
+ if o.Flag then flags[o.Flag]=e end
+ function e:Set(v,silent) local changed=v~=self.value; self.value=v; if changed and not silent and o.Callback then o.Callback(v) end end
  function e:Get() return self.value end
- function e:SetName(v) self.name=v end
- function e:SetOptions(v,silent) self.options=v; if not silent and self.callback then self.callback(self.value) end end
- table.insert(allElements,e); return e
+ function e:SetEnabled(v) self.enabled=v end
+ function e:SetName(v) self.name=v; self.renames=(self.renames or 0)+1 end
+ function e:SetDescription(v) self.description=v end
+ function e:Click() o.Callback() end
+ elements[o.Name]=e; return e
 end
-local section={AddButton=function(_,o) return element(o) end,AddToggle=function(_,o) return element(o) end,
- AddDropdown=function(_,o) return element(o) end,AddSlider=function(_,o) return element(o) end}
-local tab={AddSection=function() return section end}
-local W={visible=true,scale=1}
+local section={}
+for _,k in ipairs({"Toggle","Slider","Dropdown","Button","CardButton"}) do section["Add"..k]=function(_,o) return element(k,o) end end
+local tab={AddSection=function(_,o) assert(o.Name and o.Side); return section end}
+local W={Settings=tab}
 function W:AddTab(o) tabs[o.Name]=true; return tab end
-function W:SetTheme() end
-function W:SetAccent() end
-function W:SetScale(v) self.scale=v; self.scaleCalls=(self.scaleCalls or 0)+1 end
-function W:GetScale() return self.scale end
-function W:SetVisible(v) self.visible=v end
-function W:IsVisible() return self.visible end
 function W:OnUnload(fn) self.unload=fn end
-function W:Destroy() self.destroyed=true; if self.unload then self.unload() end end
-_G.MockLibrary={AddTheme=function() end,CreateWindow=function(_,o)
- assert(o.MouseWheel and o.Parent==pg); return W
+function W:Destroy() self.destroyed=true; self.unload() end
+function W:Notify(o) self.notified=o.Content end
+function W:Toggle() end
+_G.MockLibrary={CreateWindow=function(_,o)
+ assert(o.Configs and o.ConfigFolder=="RoCheese" and o.Theme==nil and o.Accent==nil)
+ return W
 end}
 local game={HttpGet=function() return "return MockLibrary" end}
 local warn=function(e) error(e) end
 CFG.DELAY_MIN,CFG.DELAY_MAX,CFG.DELAY_STEP=0,20,0.5
-RUNTIME.THEME,RUNTIME.ACCENT,RUNTIME.ELO="Midnight","Blue",1500
-RUNTIME.NOISE,RUNTIME.BLUNDER,RUNTIME.DELAY_MIN,RUNTIME.DELAY_MAX=0.32,0.06,5,10
-` + section('-- gui ---', '-- actions ---') + `
-assert(buildGui())
-assert(tabs.Overview and tabs.Engine and tabs.Automation and tabs.Appearance and tabs.Profiles)
-rows.status.Text="engine ready"
-local displayed=false
-for _,e in ipairs(allElements) do if e.name=="engine ready" then displayed=true end end
-assert(displayed and rows.status.Text=="engine ready")
-controls.delayMax.callback(0); assert(RUNTIME.DELAY_MAX-RUNTIME.DELAY_MIN>=0.5)
-controls.delayMin.callback(20); assert(RUNTIME.DELAY_MAX<=20 and RUNTIME.DELAY_MAX-RUNTIME.DELAY_MIN>=0.5)
-controls.scale.callback(0.65); assert(W.scale==0.65)
-local calls=W.scaleCalls; layoutPanel(); assert(W.scaleCalls==calls and W.scale==0.65)
-W.visible=false; layoutPanel(); assert(RUNTIME.UI_VISIBLE==false)
-assert(#disposers==1); disposers[1](); assert(W.destroyed and not active)
+RUNTIME.SOURCE,RUNTIME.MODE,RUNTIME.STYLE="local","elo","legit"
+RUNTIME.ELO,RUNTIME.NOISE,RUNTIME.BLUNDER,RUNTIME.DELAY_MIN,RUNTIME.DELAY_MAX,RUNTIME.SHOW_ARROW=1500,0.32,0.06,5,10,true
+local PRESETS={raj={source="vortex",mode="best",elo=1800,noise=0,blunder=0,delayMin=0.5,delayMax=1.5}}
+` + section('-- ui ---', '-- actions ---') + `
+applyPreset=function(name)
+ local p=PRESETS[name]
+ RUNTIME.STYLE,RUNTIME.SOURCE,RUNTIME.MODE,RUNTIME.ELO=name,p.source,p.mode,p.elo
+ RUNTIME.NOISE,RUNTIME.BLUNDER,RUNTIME.DELAY_MIN,RUNTIME.DELAY_MAX=p.noise,p.blunder,p.delayMin,p.delayMax
+ syncControls()
+end
+toggleAuto=function() RUNTIME.AUTO=not RUNTIME.AUTO; syncControls() end
+assert(buildUi())
+assert(tabs.Main and tabs.Engine and tabs.Automation and not tabs.Appearance and not tabs.Profiles)
+assert(elements.Theme==nil and elements.Accent==nil and W.notified)
+
+-- preset dropdown applies values and pushes them into the controls without callbacks
+elements.Preset:Set("Raj")
+assert(RUNTIME.SOURCE=="vortex" and flags.RC_Source.value=="Vortex" and flags.RC_Mode.value=="Best move")
+assert(flags.RC_DelayMin.value==0.5 and flags.RC_DelayMax.value==1.5 and RUNTIME.STYLE=="raj")
+assert(not flags.RC_Elo.enabled, "rating sliders disabled in best-move mode")
+
+-- manual change (e.g. a Zenin config load) leaves the preset
+flags.RC_Mode:Set("Rating")
+assert(RUNTIME.MODE=="elo" and RUNTIME.STYLE=="custom" and elements.Preset.value=="Custom" and flags.RC_Elo.enabled)
+flags.RC_Noise:Set(50); assert(RUNTIME.NOISE==0.5)
+
+-- delay sliders keep a valid range
+flags.RC_DelayMin:Set(19.5); assert(RUNTIME.DELAY_MAX==20 and flags.RC_DelayMax.value==20)
+flags.RC_DelayMax:Set(0.5); assert(RUNTIME.DELAY_MIN==0 and flags.RC_DelayMin.value==0)
+
+-- toggles
+flags.RC_Auto:Set(true); assert(RUNTIME.AUTO==true)
+flags.RC_Arrows:Set(false); assert(RUNTIME.SHOW_ARROW==false and cleared==1)
+
+-- status cards only re-render on change
+local function formatClock() return "1:00" end
+local function evalText(s) return "+0.35" end
+local function pushEval() end
+` + section('local function setCard(', '-- main loop ---') + `
+S.best,S.san,S.depth,S.busy,S.second,S.secondSan=nil,nil,0,false,nil,nil
+refreshUi(nil,-1); assert(elements["Waiting for game"])
+local card=ui.best
+S.best,S.san,S.depth,S.score,S.secondSan="e2e4","e4",16,35,"Nf3"
+refreshUi(session,0)
+assert(card.name=="e4   +0.35" and card.description:find("Nf3"))
+local renames=card.renames; refreshUi(session,0); assert(card.renames==renames)
+
+-- unloading from the menu disposes the script once
+W:Destroy(); assert(disposed and Window==nil)
 `));
