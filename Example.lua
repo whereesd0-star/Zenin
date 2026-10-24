@@ -60,7 +60,27 @@ do
 	aa:AddSlider({Name = "Jitter Range", Min = 0, Max = 180, Default = 120, Step = 0.1, Suffix = " deg", Flag = "JitterRange", DependsOn = enabled})
 end
 
-Window:AddTab({Name = "Visuals", Icon = {"image", "eye"}})
+local Visuals = Window:AddTab({Name = "Visuals", Icon = {"image", "eye"}})
+do
+	local players = Visuals:AddSubTab({Name = "Players", Icon = "user"})
+	local main = players:AddSection({Side = "Left"})
+	main:AddToggle({Name = "Enabled", Flag = "EspEnabled"})
+	main:AddSlider({Name = "Text Scale", Min = 0.5, Max = 2, Default = 1, Step = 0.01, Suffix = "x", Flag = "TextScale"})
+	main:AddButton({Name = "Reset to Defaults", Callback = function() return "Done" end})
+
+	local weapon = players:AddSection({Name = "Weapon", Side = "Right"})
+	weapon:AddDropdown({Name = "Display", Options = {"None", "Name", "Icon"}, Flag = "WeaponDisplay"})
+	local font = weapon:AddDropdown({Name = "Font", Options = {"Smallest", "Default", "Bold"}, Flag = "WeaponFont"})
+	local fontSettings = font:AddSettings({Title = "Font Settings"})
+	fontSettings:AddSlider({Name = "Size", Min = 6, Max = 20, Default = 10, Suffix = "px", Flag = "WeaponFontSize"})
+	weapon:AddToggle({Name = "Glow", Flag = "WeaponGlow"})
+	weapon:AddColorPicker({Name = "Color", Default = Color3.new(1, 1, 1), Flag = "WeaponColor"})
+	weapon:AddColorPicker({
+		Name = "Gradient",
+		Default = {Color3.fromRGB(255, 89, 89), Color3.fromRGB(255, 180, 90), Color3.fromRGB(90, 140, 255)},
+		Flag = "WeaponGradient",
+	})
+end
 Window:AddTab({Name = "Misc", Icon = {"sliders-horizontal", "sliders"}})
 Window:AddTab({Name = "Skins", Icon = "shirt"})
 

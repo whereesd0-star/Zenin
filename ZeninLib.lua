@@ -492,6 +492,7 @@ local function NewElement(W, S, kind, o, height)
 	})
 	local el = {
 		Type = kind,
+		Name = o.Name or o.Title,
 		Flag = o.Flag,
 		Enabled = o.Enabled ~= false and o.Disabled ~= true,
 		Visible = o.Visible ~= false,
@@ -520,14 +521,14 @@ local function NewElement(W, S, kind, o, height)
 	Method(el, "SetCallback", function(fn) o.Callback = fn end)
 	Method(el, "SetEnabled", function(b)
 		el.Enabled = b ~= false
-		if not el.Enabled and W.PopupOwner == el then W.ClosePopup() end
+		if not el.Enabled then W.ClosePopupOf(el) end
 		el._apply(false)
 	end)
 	Method(el, "IsEnabled", function() return el.Enabled end)
 	Method(el, "SetVisible", function(b)
 		el.Visible = b ~= false
 		row.Visible = el.Visible
-		if not el.Visible and W.PopupOwner == el then W.ClosePopup() end
+		if not el.Visible then W.ClosePopupOf(el) end
 	end)
 	Method(el, "IsVisible", function() return el.Visible end)
 	-- Элемент активен только когда other (обычно Toggle) включён; invert = наоборот.
@@ -548,7 +549,7 @@ local function NewElement(W, S, kind, o, height)
 		return el
 	end)
 	Method(el, "Destroy", function()
-		if W.PopupOwner == el then W.ClosePopup() end
+		W.ClosePopupOf(el)
 		if el.Flag then
 			Library.Flags[el.Flag] = nil
 			Library.Options[el.Flag] = nil
@@ -578,15 +579,154 @@ local function Finish(el, o)
 end
 
 -- ============================================================================
+-- ШЕСТЕРЁНКА НАСТРОЕК ЭЛЕМЕНТА (панель как Font Settings в оригинале)
+-- ============================================================================
+local ElementApi
+local PANEL_W = 228
+
+-- place() освобождает место в строке элемента и возвращает размер и позицию шестерёнки.
+local function AttachSettings(W, el, place)
+	Method(el, "AddSettings", function(so)
+		if el.Settings then return el.Settings end
+		so = Opts(so)
+		local size, pos = place()
+		local gear = Create("TextButton", {
+			Size = UDim2.fromOffset(size, size),
+			Position = pos,
+			BorderSizePixel = 0,
+			Text = "",
+			AutoButtonColor = false,
+			ZIndex = 2,
+			Parent = el.Row,
+		})
+		Corner(gear, 3)
+		local gs = Stroke(gear, WHITE, 1)
+		local isz = size >= 20 and 12 or 10
+		local gi = CreateIcon(gear, {"settings", "cog"}, isz, UDim2.new(0.5, -isz / 2, 0.5, -isz / 2))
+		local open, hover = false, false
+		local function PaintGear()
+			local T = W.Theme
+			gear.BackgroundColor3 = T.DropdownBg
+			gs.Color = open and W.Accent or T.DropdownBorder
+			gs.Transparency = open and (1 - W.AccentAlpha) or 0
+			gi.ImageColor3 = (open or hover) and T.Text or T.NavGray
+		end
+		W.Bind(PaintGear, gear)
+		gear.MouseEnter:Connect(function() hover = true PaintGear() end)
+		gear.MouseLeave:Connect(function() hover = false PaintGear() end)
+
+		local frame = Create("Frame", {
+			Size = UDim2.fromOffset(PANEL_W, 26),
+			BorderSizePixel = 0,
+			Active = true,
+			ClipsDescendants = true,
+			Visible = false,
+			Parent = W.PopupLayer,
+		})
+		W.Paint(frame, "BackgroundColor3", "WindowBg")
+		Corner(frame, 4)
+		local fs = Stroke(frame, WHITE, 1)
+		W.Paint(fs, "Color", "BoxBorder")
+
+		local header = Create("Frame", {Size = UDim2.new(1, 0, 0, 26), BackgroundColor3 = WHITE, BorderSizePixel = 0, Parent = frame})
+		Corner(header, 4)
+		local hfill = Create("Frame", {Size = UDim2.new(1, 0, 0, 13), Position = UDim2.fromOffset(0, 13), BackgroundColor3 = WHITE, BorderSizePixel = 0, Parent = header})
+		local grads = {Create("UIGradient", {Parent = header}), Create("UIGradient", {Parent = hfill})}
+		W.Bind(function(T, accent, alpha)
+			local seq = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, T.BarBg:Lerp(accent, 0.1 * (alpha or 1))),
+				ColorSequenceKeypoint.new(0.35, T.BarBg),
+				ColorSequenceKeypoint.new(1, T.BarBg),
+			})
+			for _, g in ipairs(grads) do g.Color = seq end
+		end, header)
+		local line = Create("Frame", {Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 1, -1), BorderSizePixel = 0, Parent = header})
+		W.Paint(line, "BackgroundColor3", "BarLine")
+		local brand = Create("Frame", {
+			Size = UDim2.new(0, 0, 1, 0),
+			AutomaticSize = Enum.AutomaticSize.X,
+			Position = UDim2.fromOffset(9, 0),
+			BackgroundTransparency = 1,
+			Parent = header,
+		})
+		Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, 7),
+			Parent = brand,
+		})
+		local logo
+		local function BuildLogo()
+			if not brand.Parent then return end
+			if logo then logo:Destroy() end
+			logo = CreateLogo(W, brand, W.LogoSpec, 10, 12)
+			logo.LayoutOrder = 1
+		end
+		BuildLogo()
+		table.insert(W.LogoHooks, BuildLogo)
+		local title = Label(brand, so.Title or so.Name or ((el.Name or "Element") .. " Settings"), {AutoX = true, Size = UDim2.new(0, 0, 1, 0), Weight = "SemiBold"})
+		title.LayoutOrder = 2
+		W.Paint(title, "TextColor3", "Text")
+
+		local content = Create("Frame", {Size = UDim2.new(1, -18, 0, 0), Position = UDim2.fromOffset(9, 35), BackgroundTransparency = 1, Parent = frame})
+		local layout = Create("UIListLayout", {Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder, Parent = content})
+		local function Height()
+			local sc = W.Scale.Scale
+			local h = sc > 0 and layout.AbsoluteContentSize.Y / sc or 0
+			content.Size = UDim2.new(1, -18, 0, h)
+			return 35 + h + 10
+		end
+		layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+			if open then frame.Size = UDim2.fromOffset(PANEL_W, Height()) end
+		end)
+
+		local P = {Order = 0, Content = content, Frame = frame}
+		ElementApi(W, P)
+		local owner = {el = el}
+		Method(P, "Open", function()
+			if open or not el.Enabled or not W.PreparePopup(owner, gear) then return end
+			local sc = W.Scale.Scale
+			local rel = (gear.AbsolutePosition - W.Main.AbsolutePosition) / sc
+			frame.Position = UDim2.fromOffset(rel.X, rel.Y + gear.AbsoluteSize.Y / sc + 8)
+			frame.Size = UDim2.fromOffset(PANEL_W, 26)
+			W.PushPopup(frame, owner, {Keep = true, OnClose = function()
+				open = false
+				PaintGear()
+			end})
+			open = true
+			PaintGear()
+			Tween(frame, TweenInfo.new(0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Size = UDim2.fromOffset(PANEL_W, Height())})
+		end)
+		Method(P, "Close", function() W.ClosePopupOf(owner) end)
+		Method(P, "IsOpen", function() return open end)
+		Method(P, "Toggle", function() if open then P.Close() else P.Open() end end)
+		Method(P, "SetTitle", function(t) title.Text = tostring(t) end)
+		gear.MouseButton1Click:Connect(function()
+			if open then P.Close() else P.Open() end
+		end)
+
+		local destroy = el.Destroy
+		Method(el, "Destroy", function()
+			W.ClosePopupOf(owner)
+			for i = #W.Elements, 1, -1 do
+				local x = W.Elements[i]
+				if x and x.Row:IsDescendantOf(frame) then x.Destroy() end
+			end
+			frame:Destroy()
+			destroy()
+		end)
+		el.Settings = P
+		return P
+	end)
+end
+
+-- ============================================================================
 -- ПОПАП СПИСКА (Dropdown / MultiDropdown)
 -- ============================================================================
 local function OpenList(W, owner, btn, options, isSelected, onPick, multi)
-	if W.ActivePopup then
-		W.ClosePopup()
-		return
-	end
+	if not W.PreparePopup(owner, btn) then return end
 	local T = W.Theme
-	W.PopupLayer.Visible = true
 	local sc = W.Scale.Scale
 	local rel = (btn.AbsolutePosition - W.Main.AbsolutePosition) / sc
 	local w = btn.AbsoluteSize.X / sc
@@ -603,8 +743,6 @@ local function OpenList(W, owner, btn, options, isSelected, onPick, multi)
 		BackgroundColor3 = T.PopupBg,
 		ClipsDescendants = true,
 		Active = true,
-		ZIndex = 35,
-		Parent = W.PopupLayer,
 	})
 	Corner(popup, 3)
 	Stroke(popup, T.DropdownBorder, 1)
@@ -640,7 +778,6 @@ local function OpenList(W, owner, btn, options, isSelected, onPick, multi)
 	for i, opt in ipairs(options) do
 		local ob = Create("TextButton", {
 			Size = UDim2.new(1, 0, 0, itemH),
-			BackgroundColor3 = T.PopupHover,
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 			Text = tostring(opt),
@@ -659,20 +796,17 @@ local function OpenList(W, owner, btn, options, isSelected, onPick, multi)
 		end
 		table.insert(items, it)
 		Paint(it)
-		ob.MouseEnter:Connect(function() ob.BackgroundTransparency = 0 end)
-		ob.MouseLeave:Connect(function() ob.BackgroundTransparency = 1 end)
 		ob.MouseButton1Click:Connect(function()
 			onPick(opt)
 			if multi then
 				for _, x in ipairs(items) do Paint(x) end
 			else
-				W.ClosePopup()
+				W.ClosePopupOf(owner)
 			end
 		end)
 	end
 
-	W.ActivePopup = popup
-	W.PopupOwner = owner
+	W.PushPopup(popup, owner)
 	Tween(popup, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.fromOffset(w, totalH)})
 end
 
@@ -712,8 +846,12 @@ local function AddToggle(W, S, o)
 			dotC = enabled and T.ToggleOffDot or T.ToggleOffDotOff
 			dotPos = UDim2.new(0, 3, 0.5, -4)
 		end
-		lbl.TextColor3 = (not enabled) and T.TextDim or (state and T.Text or T.TextGray)
-		ApplyFont(lbl, state and "SemiBold" or "Medium")
+		local lc = (not enabled) and T.TextDim or ((state or el._hover) and T.Text or T.TextGray)
+		if animate then
+			Tween(lbl, TweenInfo.new(0.12, Enum.EasingStyle.Quad), {TextColor3 = lc})
+		else
+			lbl.TextColor3 = lc
+		end
 		if animate then
 			local ti = TweenInfo.new(0.14, Enum.EasingStyle.Quad)
 			Tween(dot, ti, {Position = dotPos, BackgroundColor3 = dotC})
@@ -746,6 +884,16 @@ local function AddToggle(W, S, o)
 	end
 	click.MouseButton1Click:Connect(OnClick)
 	sw.MouseButton1Click:Connect(OnClick)
+	local function Hover(b)
+		el._hover = b
+		el._apply(true)
+	end
+	click.MouseEnter:Connect(function() Hover(true) end)
+	click.MouseLeave:Connect(function() Hover(false) end)
+	AttachSettings(W, el, function()
+		lbl.Size = UDim2.new(1, -34 - 27, 1, 0)
+		return 21, UDim2.new(1, -26 - 6 - 21, 0.5, -10.5)
+	end)
 	return Finish(el, o)
 end
 
@@ -863,6 +1011,10 @@ local function AddSlider(W, S, o)
 		if el.Enabled and IsClickOrTouch(input) and W.BeginDrag(input, Update) then
 			Update(input)
 		end
+	end)
+	AttachSettings(W, el, function()
+		valLbl.Size = UDim2.new(0.35, -20, 0, 15)
+		return 15, UDim2.new(1, -15, 0, EXTRA)
 	end)
 	return Finish(el, o)
 end
@@ -1001,7 +1153,7 @@ local function AddDropdown(W, S, o, multi)
 			if v ~= nil and not IndexOf(options, v) then return end
 			value = v
 		end
-		if W.PopupOwner == el then W.ClosePopup() end
+		W.ClosePopupOf(el)
 		Sync()
 		if Key() ~= before and not silent then
 			Fire()
@@ -1018,7 +1170,7 @@ local function AddDropdown(W, S, o, multi)
 	Method(el, "SetOptions", function(list, silent)
 		local before = Key()
 		options = CopyList(list)
-		if W.PopupOwner == el then W.ClosePopup() end
+		W.ClosePopupOf(el)
 		if multi then
 			for k in pairs(selected) do
 				if not IndexOf(options, k) then selected[k] = nil end
@@ -1069,11 +1221,16 @@ local function AddDropdown(W, S, o, multi)
 		Method(el, "Clear", function() el.Set({}) end)
 		Method(el, "SelectAll", function() el.Set(CopyList(options)) end)
 	end
+	AttachSettings(W, el, function()
+		btn.Size = UDim2.new(0.5, -29, 0, 25)
+		btn.Position = UDim2.new(0.5, 29, 0, 0)
+		return 25, UDim2.new(0.5, 0, 0, 0)
+	end)
 	return Finish(el, o)
 end
 
 -- Кнопка-карточка (как бывшая Telegram): иконка + заголовок (+описание) + кнопка действия справа.
-local function AddButton(W, S, o)
+local function AddCardButton(W, S, o)
 	o = Opts(o)
 	local cb = o.Callback
 	local el, row = NewElement(W, S, "Button", {Enabled = o.Enabled, Disabled = o.Disabled, Visible = o.Visible}, 40)
@@ -1187,6 +1344,163 @@ local function AddButton(W, S, o)
 	return el
 end
 
+-- Модалка выбора цвета (SV + Hue + Alpha), кладётся в стек попапов.
+local function OpenColorModal(W, owner, anchor, color, alpha, onChange)
+	local T = W.Theme
+	local h, s, v = color:ToHSV()
+	local a = 1 - (alpha or 1)
+
+	local MW, MH = 208, 184
+	local SV, BW, BH = 144, 16, 144
+	local HX, AX = 160, 184
+	local sc = W.Scale.Scale
+	local rel = (anchor.AbsolutePosition - W.Main.AbsolutePosition) / sc
+	local mx = math.clamp(rel.X + 18 + 13, 6, WIN_W - MW - 6)
+	local my = math.clamp(rel.Y + 9 - MH / 2, HEADER_H + 6, WIN_H - BOTTOM_H - 6 - MH)
+
+	local modal = Create("Frame", {
+		Size = UDim2.fromOffset(MW, MH),
+		Position = UDim2.fromOffset(mx, my),
+		BackgroundColor3 = T.PopupBg,
+		BorderSizePixel = 0,
+		Active = true,
+	})
+	Corner(modal, 4)
+	Stroke(modal, T.BoxBorder, 1)
+
+	local svBox = Create("Frame", {
+		Size = UDim2.fromOffset(SV, SV),
+		Position = UDim2.fromOffset(8, 8),
+		BackgroundColor3 = Color3.fromHSV(h, 1, 1),
+		BorderSizePixel = 0,
+		Parent = modal,
+	})
+	local wL = Create("Frame", {Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, BorderSizePixel = 0, ZIndex = 2, Parent = svBox})
+	Create("UIGradient", {
+		Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1)}),
+		Parent = wL,
+	})
+	local bL = Create("Frame", {Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0), BorderSizePixel = 0, ZIndex = 3, Parent = svBox})
+	Create("UIGradient", {
+		Rotation = 90,
+		Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0)}),
+		Parent = bL,
+	})
+	local cursor = Create("Frame", {Size = UDim2.fromOffset(9, 9), BorderSizePixel = 0, ZIndex = 5, Parent = svBox})
+	Corner(cursor, 5)
+	Stroke(cursor, rgb(245, 245, 245), 1.5)
+	local svHit = Create("Frame", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Active = true, ZIndex = 9, Parent = svBox})
+
+	local hueBar = Create("Frame", {
+		Size = UDim2.fromOffset(BW, BH),
+		Position = UDim2.fromOffset(HX, 8),
+		BackgroundColor3 = WHITE,
+		BorderSizePixel = 0,
+		Parent = modal,
+	})
+	Create("UIGradient", {
+		Rotation = 90,
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, rgb(255, 0, 0)),
+			ColorSequenceKeypoint.new(0.17, rgb(255, 255, 0)),
+			ColorSequenceKeypoint.new(0.33, rgb(0, 255, 0)),
+			ColorSequenceKeypoint.new(0.5, rgb(0, 255, 255)),
+			ColorSequenceKeypoint.new(0.67, rgb(0, 0, 255)),
+			ColorSequenceKeypoint.new(0.83, rgb(255, 0, 255)),
+			ColorSequenceKeypoint.new(1, rgb(255, 0, 0)),
+		}),
+		Parent = hueBar,
+	})
+	local hueHit = Create("Frame", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Active = true, ZIndex = 9, Parent = hueBar})
+
+	local alphaBar = Checker(modal, AX, 8, BW, BH, 8)
+	local alphaTint = Create("Frame", {Size = UDim2.fromScale(1, 1), BackgroundColor3 = color, BorderSizePixel = 0, ZIndex = 5, Parent = alphaBar})
+	Create("UIGradient", {
+		Rotation = 90,
+		Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1)}),
+		Parent = alphaTint,
+	})
+	local alphaHit = Create("Frame", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Active = true, ZIndex = 9, Parent = alphaBar})
+
+	-- Маркер: ромб, обрезанный рамкой 3x6 до треугольника.
+	local function Marker(x, pointRight)
+		local clip = Create("Frame", {
+			Size = UDim2.fromOffset(3, 6),
+			Position = UDim2.fromOffset(x, 0),
+			BackgroundTransparency = 1,
+			ClipsDescendants = true,
+			ZIndex = 10,
+			Parent = modal,
+		})
+		Create("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Size = UDim2.fromOffset(4.2426, 4.2426),
+			Position = pointRight and UDim2.fromOffset(0, 3) or UDim2.fromOffset(3, 3),
+			Rotation = 45,
+			BackgroundColor3 = WHITE,
+			BorderSizePixel = 0,
+			ZIndex = 10,
+			Parent = clip,
+		})
+		return clip
+	end
+	local hueL, hueR = Marker(HX, true), Marker(HX + BW - 3, false)
+	local alL, alR = Marker(AX, true), Marker(AX + BW - 3, false)
+
+	local swatchBg = Checker(modal, 8, 162, 24, 12, 6)
+	local swatch = Create("Frame", {Size = UDim2.fromScale(1, 1), BorderSizePixel = 0, ZIndex = 5, Parent = swatchBg})
+	local hexLbl = Label(modal, "", {Position = UDim2.fromOffset(40, 158), Size = UDim2.fromOffset(90, 20), TextSize = 10, Color = T.TextGray})
+	local alphaLbl = Label(modal, "", {Position = UDim2.fromOffset(MW - 78, 158), Size = UDim2.fromOffset(70, 20), TextSize = 10, Align = Enum.TextXAlignment.Right, Color = T.TextGray})
+
+	local function Refresh()
+		local col = Color3.fromHSV(h, s, v)
+		local alpha = 1 - a
+		svBox.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
+		cursor.Position = UDim2.new(s, -4.5, 1 - v, -4.5)
+		cursor.BackgroundColor3 = col
+		alphaTint.BackgroundColor3 = col
+		swatch.BackgroundColor3 = col
+		swatch.BackgroundTransparency = 1 - alpha
+		local hy = 8 + h * BH - 3
+		hueL.Position = UDim2.fromOffset(HX, hy)
+		hueR.Position = UDim2.fromOffset(HX + BW - 3, hy)
+		local ay = 8 + a * BH - 3
+		alL.Position = UDim2.fromOffset(AX, ay)
+		alR.Position = UDim2.fromOffset(AX + BW - 3, ay)
+		hexLbl.Text = "#" .. ToHex(col)
+		alphaLbl.Text = math.floor(alpha * 100 + 0.5) .. "%"
+	end
+	Refresh()
+
+	local mode = nil
+	local function Process(inp)
+		if mode == "SV" then
+			s = math.clamp((inp.Position.X - svBox.AbsolutePosition.X) / svBox.AbsoluteSize.X, 0, 1)
+			v = 1 - math.clamp((inp.Position.Y - svBox.AbsolutePosition.Y) / svBox.AbsoluteSize.Y, 0, 1)
+		elseif mode == "H" then
+			h = math.clamp((inp.Position.Y - hueBar.AbsolutePosition.Y) / hueBar.AbsoluteSize.Y, 0, 0.999)
+		elseif mode == "A" then
+			a = math.clamp((inp.Position.Y - alphaBar.AbsolutePosition.Y) / alphaBar.AbsoluteSize.Y, 0, 0.92)
+		else
+			return
+		end
+		Refresh()
+		onChange(Color3.fromHSV(h, s, v), 1 - a)
+	end
+	local function Begin(m)
+		return function(i)
+			if IsClickOrTouch(i) and W.BeginDrag(i, Process, function() mode = nil end, "popup") then
+				mode = m
+				Process(i)
+			end
+		end
+	end
+	svHit.InputBegan:Connect(Begin("SV"))
+	hueHit.InputBegan:Connect(Begin("H"))
+	alphaHit.InputBegan:Connect(Begin("A"))
+	W.PushPopup(modal, owner)
+end
+
 -- Встроенный пикер акцента (только для Settings).
 local function AccentPicker(W, S, labelText)
 	local el, row = NewElement(W, S, "AccentPicker", {}, 25)
@@ -1208,175 +1522,230 @@ local function AccentPicker(W, S, labelText)
 	end, row)
 	Method(el, "Get", function() return W.Accent, W.AccentAlpha end)
 	Method(el, "Set", function(c, a) W.SetAccent(c, a) end)
-
 	circle.MouseButton1Click:Connect(function()
-		if W.ActivePopup then W.ClosePopup() return end
-		local T = W.Theme
-		W.PopupLayer.Visible = true
-		local h, s, v = W.Accent:ToHSV()
-		local a = 1 - W.AccentAlpha
-
-		local MW, MH = 208, 184
-		local SV, BW, BH = 144, 16, 144
-		local HX, AX = 160, 184
-		local sc = W.Scale.Scale
-		local rel = (circle.AbsolutePosition - W.Main.AbsolutePosition) / sc
-		local mx = math.clamp(rel.X + 18 + 13, 6, WIN_W - MW - 6)
-		local my = math.clamp(rel.Y + 9 - MH / 2, HEADER_H + 6, WIN_H - BOTTOM_H - 6 - MH)
-
-		local modal = Create("Frame", {
-			Size = UDim2.fromOffset(MW, MH),
-			Position = UDim2.fromOffset(mx, my),
-			BackgroundColor3 = T.PopupBg,
-			BorderSizePixel = 0,
-			Active = true,
-			ZIndex = 35,
-			Parent = W.PopupLayer,
-		})
-		Corner(modal, 4)
-		Stroke(modal, T.BoxBorder, 1)
-
-		local svBox = Create("Frame", {
-			Size = UDim2.fromOffset(SV, SV),
-			Position = UDim2.fromOffset(8, 8),
-			BackgroundColor3 = Color3.fromHSV(h, 1, 1),
-			BorderSizePixel = 0,
-			Parent = modal,
-		})
-		local wL = Create("Frame", {Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, BorderSizePixel = 0, ZIndex = 2, Parent = svBox})
-		Create("UIGradient", {
-			Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1)}),
-			Parent = wL,
-		})
-		local bL = Create("Frame", {Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0), BorderSizePixel = 0, ZIndex = 3, Parent = svBox})
-		Create("UIGradient", {
-			Rotation = 90,
-			Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0)}),
-			Parent = bL,
-		})
-		local cursor = Create("Frame", {Size = UDim2.fromOffset(9, 9), BorderSizePixel = 0, ZIndex = 5, Parent = svBox})
-		Corner(cursor, 5)
-		Stroke(cursor, rgb(245, 245, 245), 1.5)
-		local svHit = Create("Frame", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Active = true, ZIndex = 9, Parent = svBox})
-
-		local hueBar = Create("Frame", {
-			Size = UDim2.fromOffset(BW, BH),
-			Position = UDim2.fromOffset(HX, 8),
-			BackgroundColor3 = WHITE,
-			BorderSizePixel = 0,
-			Parent = modal,
-		})
-		Create("UIGradient", {
-			Rotation = 90,
-			Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, rgb(255, 0, 0)),
-				ColorSequenceKeypoint.new(0.17, rgb(255, 255, 0)),
-				ColorSequenceKeypoint.new(0.33, rgb(0, 255, 0)),
-				ColorSequenceKeypoint.new(0.5, rgb(0, 255, 255)),
-				ColorSequenceKeypoint.new(0.67, rgb(0, 0, 255)),
-				ColorSequenceKeypoint.new(0.83, rgb(255, 0, 255)),
-				ColorSequenceKeypoint.new(1, rgb(255, 0, 0)),
-			}),
-			Parent = hueBar,
-		})
-		local hueHit = Create("Frame", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Active = true, ZIndex = 9, Parent = hueBar})
-
-		local alphaBar = Checker(modal, AX, 8, BW, BH, 8)
-		local alphaTint = Create("Frame", {Size = UDim2.fromScale(1, 1), BackgroundColor3 = W.Accent, BorderSizePixel = 0, ZIndex = 5, Parent = alphaBar})
-		Create("UIGradient", {
-			Rotation = 90,
-			Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1)}),
-			Parent = alphaTint,
-		})
-		local alphaHit = Create("Frame", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Active = true, ZIndex = 9, Parent = alphaBar})
-
-		-- Маркер: ромб, обрезанный рамкой 3x6 до треугольника.
-		local function Marker(x, pointRight)
-			local clip = Create("Frame", {
-				Size = UDim2.fromOffset(3, 6),
-				Position = UDim2.fromOffset(x, 0),
-				BackgroundTransparency = 1,
-				ClipsDescendants = true,
-				ZIndex = 10,
-				Parent = modal,
-			})
-			Create("Frame", {
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Size = UDim2.fromOffset(4.2426, 4.2426),
-				Position = pointRight and UDim2.fromOffset(0, 3) or UDim2.fromOffset(3, 3),
-				Rotation = 45,
-				BackgroundColor3 = WHITE,
-				BorderSizePixel = 0,
-				ZIndex = 10,
-				Parent = clip,
-			})
-			return clip
-		end
-		local hueL, hueR = Marker(HX, true), Marker(HX + BW - 3, false)
-		local alL, alR = Marker(AX, true), Marker(AX + BW - 3, false)
-
-		local swatchBg = Checker(modal, 8, 162, 24, 12, 6)
-		local swatch = Create("Frame", {Size = UDim2.fromScale(1, 1), BorderSizePixel = 0, ZIndex = 5, Parent = swatchBg})
-		local hexLbl = Label(modal, "", {Position = UDim2.fromOffset(40, 158), Size = UDim2.fromOffset(90, 20), TextSize = 10, Color = T.TextGray})
-		local alphaLbl = Label(modal, "", {Position = UDim2.fromOffset(MW - 78, 158), Size = UDim2.fromOffset(70, 20), TextSize = 10, Align = Enum.TextXAlignment.Right, Color = T.TextGray})
-
-		local function Refresh()
-			local col = Color3.fromHSV(h, s, v)
-			local alpha = 1 - a
-			svBox.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
-			cursor.Position = UDim2.new(s, -4.5, 1 - v, -4.5)
-			cursor.BackgroundColor3 = col
-			alphaTint.BackgroundColor3 = col
-			swatch.BackgroundColor3 = col
-			swatch.BackgroundTransparency = 1 - alpha
-			local hy = 8 + h * BH - 3
-			hueL.Position = UDim2.fromOffset(HX, hy)
-			hueR.Position = UDim2.fromOffset(HX + BW - 3, hy)
-			local ay = 8 + a * BH - 3
-			alL.Position = UDim2.fromOffset(AX, ay)
-			alR.Position = UDim2.fromOffset(AX + BW - 3, ay)
-			hexLbl.Text = "#" .. ToHex(col)
-			alphaLbl.Text = math.floor(alpha * 100 + 0.5) .. "%"
-		end
-		Refresh()
-
-		local mode = nil
-		local function Process(inp)
-			if mode == "SV" then
-				s = math.clamp((inp.Position.X - svBox.AbsolutePosition.X) / svBox.AbsoluteSize.X, 0, 1)
-				v = 1 - math.clamp((inp.Position.Y - svBox.AbsolutePosition.Y) / svBox.AbsoluteSize.Y, 0, 1)
-			elseif mode == "H" then
-				h = math.clamp((inp.Position.Y - hueBar.AbsolutePosition.Y) / hueBar.AbsoluteSize.Y, 0, 0.999)
-			elseif mode == "A" then
-				a = math.clamp((inp.Position.Y - alphaBar.AbsolutePosition.Y) / alphaBar.AbsoluteSize.Y, 0, 0.92)
-			else
-				return
-			end
-			Refresh()
-			W.SetAccent(Color3.fromHSV(h, s, v), 1 - a)
-		end
-		local function Begin(m)
-			return function(i)
-				if IsClickOrTouch(i) and W.BeginDrag(i, Process, function() mode = nil end, "popup") then
-					mode = m
-					Process(i)
-				end
-			end
-		end
-		svHit.InputBegan:Connect(Begin("SV"))
-		hueHit.InputBegan:Connect(Begin("H"))
-		alphaHit.InputBegan:Connect(Begin("A"))
-		W.ActivePopup = modal
-		W.PopupOwner = el
+		if not W.PreparePopup(el, circle) then return end
+		OpenColorModal(W, el, circle, W.Accent, W.AccentAlpha, function(c, a) W.SetAccent(c, a) end)
 	end)
 	return el
+end
+
+-- ColorPicker: от 1 до 4 цветов в одной строке (например, градиент).
+local MAX_COLORS = 4
+local function AddColorPicker(W, S, o)
+	o = Opts(o)
+	local el, row = NewElement(W, S, "ColorPicker", o, 21)
+	local def = o.Default or o.Value or o.Color or o.Colors or WHITE
+	local multi = typeof(def) ~= "Color3" and type(def) == "table"
+	local list = multi and def or {def}
+	local colors, alphas = {}, {}
+	for i = 1, math.min(#list, MAX_COLORS) do
+		colors[i] = typeof(list[i]) == "Color3" and list[i] or WHITE
+		local al = o.Alpha
+		if type(al) == "table" then al = al[i] end
+		alphas[i] = math.clamp(tonumber(al) or 1, 0, 1)
+	end
+	if #colors == 0 then colors[1], alphas[1] = WHITE, 1 end
+	local n = #colors
+	local CS, GAP = 18, 5
+	local cw = n * CS + (n - 1) * GAP
+
+	local lbl = Label(row, o.Name or o.Title or "Color", {Size = UDim2.new(1, -(cw + 8), 1, 0), Truncate = true})
+	local circles = {}
+	for i = 1, n do
+		local c = Create("TextButton", {
+			Size = UDim2.fromOffset(CS, CS),
+			Position = UDim2.new(1, -cw + (i - 1) * (CS + GAP), 0.5, -CS / 2),
+			BorderSizePixel = 0,
+			Text = "",
+			AutoButtonColor = false,
+			ZIndex = 2,
+			Parent = row,
+		})
+		Corner(c, CS / 2)
+		circles[i] = {btn = c, el = el, index = i}
+	end
+
+	local function Value()
+		if multi then return CopyList(colors) end
+		return colors[1]
+	end
+	local function AlphaValue()
+		if multi then return CopyList(alphas) end
+		return alphas[1]
+	end
+	el.Value = Value()
+
+	function el._apply()
+		local T, enabled = W.Theme, el.Enabled
+		lbl.TextColor3 = enabled and T.TextGray or T.TextDim
+		for i, c in ipairs(circles) do
+			c.btn.BackgroundColor3 = colors[i]
+			c.btn.BackgroundTransparency = 1 - alphas[i] * (enabled and 1 or 0.45)
+		end
+	end
+	W.Bind(function() el._apply() end, row)
+
+	local function Changed(silent)
+		el.Value = Value()
+		el._apply()
+		if silent then
+			el._sync(el.Value)
+		else
+			el._fire(el.Value, AlphaValue())
+		end
+	end
+
+	for i, c in ipairs(circles) do
+		c.btn.MouseButton1Click:Connect(function()
+			if not el.Enabled or not W.PreparePopup(c, c.btn) then return end
+			OpenColorModal(W, c, c.btn, colors[i], alphas[i], function(col, a)
+				colors[i], alphas[i] = col, a
+				Changed(false)
+			end)
+		end)
+	end
+
+	-- Set(Color3 | {Color3...}, alpha | {alpha...}, silent)
+	Method(el, "Set", function(v, a, silent)
+		if typeof(v) == "Color3" then v = {v} end
+		if type(v) ~= "table" then return end
+		for i = 1, n do
+			if typeof(v[i]) == "Color3" then colors[i] = v[i] end
+			local ai = type(a) == "table" and a[i] or a
+			if tonumber(ai) then alphas[i] = math.clamp(tonumber(ai), 0, 1) end
+		end
+		W.ClosePopupOf(el)
+		Changed(silent)
+	end)
+	Method(el, "SetColor", function(i, col, a, silent)
+		if not colors[i] then return end
+		if typeof(col) == "Color3" then colors[i] = col end
+		if tonumber(a) then alphas[i] = math.clamp(tonumber(a), 0, 1) end
+		Changed(silent)
+	end)
+	Method(el, "Get", Value)
+	Method(el, "GetColor", function(i) return colors[i or 1] end)
+	Method(el, "GetAlpha", function(i)
+		if i then return alphas[i] end
+		return AlphaValue()
+	end)
+	Method(el, "GetCount", function() return n end)
+	Method(el, "SetName", function(t) lbl.Text = tostring(t) end)
+	-- для конфигов: цвета храним hex-строками
+	function el._serialize()
+		local out = {}
+		for i = 1, n do out[i] = {ToHex(colors[i]), alphas[i]} end
+		return out
+	end
+	function el._deserialize(data)
+		if type(data) ~= "table" then return end
+		local cs, as = {}, {}
+		for i = 1, n do
+			local d = data[i]
+			if type(d) == "table" then
+				cs[i] = FromHex(d[1]) or colors[i]
+				as[i] = tonumber(d[2]) or alphas[i]
+			end
+		end
+		el.Set(cs, as)
+	end
+
+	AttachSettings(W, el, function()
+		lbl.Size = UDim2.new(1, -(cw + 8 + 27), 1, 0)
+		return 21, UDim2.new(1, -(cw + 6 + 21), 0.5, -10.5)
+	end)
+	return Finish(el, o)
+end
+
+-- Обычная кнопка во всю ширину (как Reset to Defaults в оригинале).
+local function AddPlainButton(W, S, o)
+	o = Opts(o)
+	local cb = o.Callback
+	local el, row = NewElement(W, S, "Button", {Enabled = o.Enabled, Disabled = o.Disabled, Visible = o.Visible}, 27)
+	local text = tostring(o.Name or o.Title or o.Text or "Button")
+	local b = Create("TextButton", {
+		Size = UDim2.fromScale(1, 1),
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Text = text,
+		TextSize = TEXT,
+		Weight = "Medium",
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Parent = row,
+	})
+	Corner(b, 3)
+	local st = Stroke(b, WHITE, 1)
+	local hover = false
+	function el._apply()
+		local T, enabled = W.Theme, el.Enabled
+		b.BackgroundColor3 = T.DropdownBg
+		st.Color = enabled and T.DropdownBorder or T.DropdownBorderOff
+		b.TextColor3 = not enabled and T.TextDim or (hover and T.Text or T.TextGray)
+	end
+	W.Bind(function() el._apply() end, row)
+	b.MouseEnter:Connect(function() hover = true el._apply() end)
+	b.MouseLeave:Connect(function() hover = false el._apply() end)
+
+	local flashToken = 0
+	Method(el, "Flash", function(t, duration)
+		flashToken = flashToken + 1
+		local token = flashToken
+		b.Text = tostring(t)
+		task.delay(duration or 1.2, function()
+			if token == flashToken then b.Text = text end
+		end)
+	end)
+	Method(el, "Fire", function()
+		if not el.Enabled then return end
+		local res = SafeCall(cb)
+		el._fire(nil)
+		if type(res) == "string" then el.Flash(res) end
+	end)
+	Method(el, "Get", function() return nil end)
+	Method(el, "SetName", function(t)
+		text = tostring(t)
+		flashToken = flashToken + 1
+		b.Text = text
+	end)
+	el.SetText = el.SetName
+	Method(el, "SetCallback", function(fn) cb = fn end)
+	b.MouseButton1Click:Connect(function() el.Fire() end)
+	if o.DependsOn then el.DependsOn(o.DependsOn, o.InvertDependency) end
+	el._apply()
+	return el
+end
+
+local ELEMENT_KINDS = {"Toggle", "Slider", "Dropdown", "MultiDropdown", "Button", "CardButton", "ColorPicker"}
+
+-- Методы добавления элементов для секции или панели настроек (S.Content — контейнер со списком).
+function ElementApi(W, S)
+	Method(S, "AddToggle", function(x) return AddToggle(W, S, x) end)
+	Method(S, "AddSlider", function(x) return AddSlider(W, S, x) end)
+	Method(S, "AddDropdown", function(x) return AddDropdown(W, S, x, false) end)
+	Method(S, "AddMultiDropdown", function(x) return AddDropdown(W, S, x, true) end)
+	Method(S, "AddColorPicker", function(x) return AddColorPicker(W, S, x) end)
+	Method(S, "AddCardButton", function(x) return AddCardButton(W, S, x) end)
+	-- с Icon / Description / ButtonText — карточка, иначе обычная кнопка
+	Method(S, "AddButton", function(x)
+		x = Opts(x)
+		if x.Icon or x.Description or x.Desc or x.ButtonText then return AddCardButton(W, S, x) end
+		return AddPlainButton(W, S, x)
+	end)
+	for _, k in ipairs(ELEMENT_KINDS) do
+		S[k] = S["Add" .. k]
+		S["Create" .. k] = S["Add" .. k]
+	end
+	-- служебный ряд произвольной высоты (встроенные страницы)
+	function S._raw(h)
+		S.Order = S.Order + 1
+		return Create("Frame", {Size = UDim2.new(1, 0, 0, h), BackgroundTransparency = 1, LayoutOrder = S.Order, Parent = S.Content})
+	end
+	return S
 end
 
 -- ============================================================================
 -- СЕКЦИИ И СТРАНИЦЫ
 -- ============================================================================
-local ELEMENT_KINDS = {"Toggle", "Slider", "Dropdown", "MultiDropdown", "Button"}
-
 local function NewSection(W, page, o)
 	o = Opts(o)
 	local side = o.Side
@@ -1429,27 +1798,14 @@ local function NewSection(W, page, o)
 	layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(Resize)
 
 	local S = {Order = 0, Content = content, Card = card}
-	Method(S, "AddToggle", function(x) return AddToggle(W, S, x) end)
-	Method(S, "AddSlider", function(x) return AddSlider(W, S, x) end)
-	Method(S, "AddDropdown", function(x) return AddDropdown(W, S, x, false) end)
-	Method(S, "AddMultiDropdown", function(x) return AddDropdown(W, S, x, true) end)
-	Method(S, "AddButton", function(x) return AddButton(W, S, x) end)
-	for _, k in ipairs(ELEMENT_KINDS) do
-		S[k] = S["Add" .. k]
-		S["Create" .. k] = S["Add" .. k]
-	end
-	-- служебный ряд произвольной высоты (встроенные страницы)
-	function S._raw(h)
-		S.Order = S.Order + 1
-		return Create("Frame", {Size = UDim2.new(1, 0, 0, h), BackgroundTransparency = 1, LayoutOrder = S.Order, Parent = content})
-	end
+	ElementApi(W, S)
 	Method(S, "SetTitle", function(t) if titleLbl then titleLbl.Text = tostring(t) end end)
 	S.SetName = S.SetTitle
 	Method(S, "SetVisible", function(b) card.Visible = b ~= false end)
 	Method(S, "Destroy", function()
 		for i = #W.Elements, 1, -1 do
 			local el = W.Elements[i]
-			if el.Row:IsDescendantOf(card) then el.Destroy() end
+			if el and el.Row:IsDescendantOf(card) then el.Destroy() end
 		end
 		card:Destroy()
 		W.Prune()
@@ -1546,6 +1902,12 @@ local function NewPage(W, full)
 		page.canvas = h
 		scroll.CanvasSize = UDim2.fromOffset(0, h)
 		goal = math.clamp(goal, 0, MaxScroll())
+		-- блоки сужаются под полосу только когда она реально нужна
+		local need = h - BODY_H > 1
+		if need ~= page.needBar then
+			page.needBar = need
+			if page.LayoutColumns then page.LayoutColumns() end
+		end
 		page.Update()
 	end
 	function page.Show(b)
@@ -1604,10 +1966,11 @@ local function NewPage(W, full)
 	end
 	page.Left = Column()
 	page.Right = full and page.Left or Column()
-	-- Блоки сужаются под толщину полосы: правый край контента = 9px левее полосы.
-	-- При стандартной толщине (6) это ровно 456, как в оригинале.
+	-- С полосой правый край контента = 9px левее неё (при толщине 6 это 456, как в оригинале).
+	-- Без полосы (контент влезает) блоки не сужаются.
 	function page.LayoutColumns()
-		local right = math.min(456, BAR_RIGHT - (W.BarW + 1) - 9)
+		local right = 456
+		if page.needBar then right = math.min(456, BAR_RIGHT - (W.BarW + 1) - 9) end
 		local total = right - 9
 		if full then
 			page.Left.frame.Size = UDim2.fromOffset(total, 0)
@@ -2042,8 +2405,6 @@ local function BuildShell(W)
 	W.Paint(W.Fader, "BackgroundColor3", "WindowBg")
 
 	W.PopupLayer = Create("Frame", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Visible = false, ZIndex = 30, Parent = Main})
-	local ClickOutside = Create("TextButton", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", ZIndex = 30, Parent = W.PopupLayer})
-	ClickOutside.MouseButton1Click:Connect(function() W.ClosePopup() end)
 
 	W.NavHolder = Create("Frame", {
 		Size = UDim2.new(0, 0, 1, 0),
@@ -2106,36 +2467,63 @@ local function BuildNavigation(W)
 		return m.Page
 	end
 
+	-- Порядок страниц для направления анимации (вкладки слева направо, настройки в конце).
+	local function OrderOf(page)
+		if page == nil then return 0 end
+		if page == W.SettingsPage then return 1e6 end
+		if page == W.ConfigPage then return 1e6 - 1 end
+		for ti, t in ipairs(W.Tabs) do
+			if t.Page == page then return ti * 100 end
+			for si, sub in ipairs(t.Subs) do
+				if sub.Page == page then return ti * 100 + si end
+			end
+		end
+		return 0
+	end
+
+	-- Смена содержимого: старая страница уходит в сторону и гаснет, новая выезжает
+	-- с противоположной стороны (по направлению вкладки) и проявляется.
 	local ActiveTweens = {}
 	local SwitchToken = 0
+	local SLIDE = 18
+	local TI_OUT = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	local TI_MOVE = TweenInfo.new(0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+	local TI_FADE = TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+	local HOME = UDim2.fromOffset(0, HEADER_H)
 	function W.ShowPage(page, animate)
 		SwitchToken = SwitchToken + 1
 		local token = SwitchToken
 		for _, t in ipairs(ActiveTweens) do t:Cancel() end
 		table.clear(ActiveTweens)
+		local old = W.CurrentPage
+		local dir = OrderOf(page) >= OrderOf(old) and 1 or -1
 
 		local function Swap()
 			for _, p in ipairs(W.Pages) do
-				if p ~= page then p.Show(false) end
+				if p ~= page then
+					p.Show(false)
+					p.scroll.Position = HOME
+				end
 			end
 			page.ScrollTo(0, true)
 			page.Show(true)
 			if animate then
-				page.scroll.Position = UDim2.fromOffset(0, HEADER_H + 12)
+				page.scroll.Position = UDim2.fromOffset(dir * SLIDE, HEADER_H)
 				W.Fader.BackgroundTransparency = 0
-				table.insert(ActiveTweens, Tween(page.scroll, TweenInfo.new(0.34, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2.fromOffset(0, HEADER_H)}))
-				table.insert(ActiveTweens, Tween(W.Fader, TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 1}))
+				table.insert(ActiveTweens, Tween(page.scroll, TI_MOVE, {Position = HOME}))
+				table.insert(ActiveTweens, Tween(W.Fader, TI_FADE, {BackgroundTransparency = 1}))
 			else
-				page.scroll.Position = UDim2.fromOffset(0, HEADER_H)
+				page.scroll.Position = HOME
 				W.Fader.BackgroundTransparency = 1
 			end
 		end
 
-		if not animate then
+		if not animate or not old then
 			Swap()
 			return
 		end
-		local out = TweenService:Create(W.Fader, TweenInfo.new(0.09, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {BackgroundTransparency = 0})
+		table.insert(ActiveTweens, Tween(old.scroll, TI_OUT, {Position = UDim2.fromOffset(-dir * SLIDE * 0.5, HEADER_H)}))
+		local out = TweenService:Create(W.Fader, TI_OUT, {BackgroundTransparency = 0})
 		table.insert(ActiveTweens, out)
 		out.Completed:Connect(function(state)
 			if state ~= Enum.PlaybackState.Completed or token ~= SwitchToken then return end
@@ -2445,7 +2833,7 @@ local function BuildSettings(W, o)
 		Callback = function(v) W.SetScale(SCALE_MAP[v] or 1, true) end,
 	})
 	W.ScrollSlider = interface.AddSlider({
-		Name = "Scrollbar Size", Min = 1, Max = 25, Default = W.BarW, Suffix = "px",
+		Name = "Scrollbar Size", Min = 3, Max = 24, Default = W.BarW, Suffix = "px",
 		Flag = "__ZeninScrollbar",
 		Callback = function(v) W.SetBarWidth(v) end,
 	})
@@ -2685,9 +3073,9 @@ local function CreateWindow(o)
 		Theme = Library.Themes[themeName],
 		Accent = o.Accent or rgb(255, 89, 89),
 		AccentAlpha = o.AccentAlpha or 1,
-		Listeners = {}, Conns = {}, PopupConns = {},
+		Listeners = {}, Conns = {}, Popups = {}, LogoHooks = {},
 		Pages = {}, Tabs = {}, Elements = {}, HeaderButtons = {}, AccentIcons = {}, UnloadCallbacks = {},
-		BarW = math.clamp(math.floor(tonumber(o.ScrollbarSize) or 6), 1, 25),
+		BarW = math.clamp(math.floor(tonumber(o.ScrollbarSize) or 6), 3, 24),
 		WheelScroll = o.MouseWheel == true,
 		ToggleKey = o.ToggleKey or o.Keybind or Enum.KeyCode.RightShift,
 		Nav = {main = "settings"},
@@ -2772,16 +3160,69 @@ local function CreateWindow(o)
 		if d.finish then SafeCall(d.finish, input, false) end
 	end)
 
-	function W.ClosePopup()
+	-- Стек попапов: у каждого уровня свой «ловец» клика снаружи (на весь экран) под попапом.
+	-- Клик мимо закрывает этот уровень и всё выше; попап, открытый из другого попапа
+	-- (дропдаун в панели настроек), кладётся поверх него.
+	function W.ClosePopupsFrom(level)
 		W.CancelDrag("popup")
-		for _, c in ipairs(W.PopupConns) do c:Disconnect() end
-		table.clear(W.PopupConns)
-		if W.ActivePopup then
-			W.ActivePopup:Destroy()
-			W.ActivePopup = nil
+		for i = #W.Popups, math.max(level, 1), -1 do
+			local e = table.remove(W.Popups, i)
+			if e.catcher then e.catcher:Destroy() end
+			if e.keep then
+				e.frame.Visible = false
+			else
+				e.frame:Destroy()
+			end
+			if e.onClose then SafeCall(e.onClose) end
 		end
-		W.PopupOwner = nil
-		if W.PopupLayer then W.PopupLayer.Visible = false end
+		if #W.Popups == 0 and W.PopupLayer then W.PopupLayer.Visible = false end
+	end
+	function W.ClosePopup()
+		W.ClosePopupsFrom(1)
+	end
+	function W.PopupOf(owner)
+		for i, e in ipairs(W.Popups) do
+			if e.owner == owner or (type(e.owner) == "table" and e.owner.el == owner) then return i end
+		end
+		return nil
+	end
+	function W.ClosePopupOf(owner)
+		local i = W.PopupOf(owner)
+		if i then W.ClosePopupsFrom(i) end
+	end
+	-- false = попап этого владельца уже был открыт и теперь закрыт (повторное нажатие).
+	function W.PreparePopup(owner, anchor)
+		local i = W.PopupOf(owner)
+		if i then
+			W.ClosePopupsFrom(i)
+			return false
+		end
+		local keep = 0
+		for j, e in ipairs(W.Popups) do
+			if anchor and anchor:IsDescendantOf(e.frame) then keep = j end
+		end
+		W.ClosePopupsFrom(keep + 1)
+		return true
+	end
+	function W.PushPopup(frame, owner, opts)
+		opts = opts or {}
+		local level = #W.Popups + 1
+		local z = 30 + level * 2
+		local catcher = Create("TextButton", {
+			Position = UDim2.fromOffset(-4000, -4000),
+			Size = UDim2.fromOffset(8000 + WIN_W, 8000 + WIN_H),
+			BackgroundTransparency = 1,
+			Text = "",
+			AutoButtonColor = false,
+			ZIndex = z,
+			Parent = W.PopupLayer,
+		})
+		catcher.MouseButton1Click:Connect(function() W.ClosePopupsFrom(level) end)
+		frame.ZIndex = z + 1
+		frame.Parent = W.PopupLayer
+		frame.Visible = true
+		table.insert(W.Popups, {frame = frame, owner = owner, keep = opts.Keep, catcher = catcher, onClose = opts.OnClose})
+		W.PopupLayer.Visible = true
 	end
 	function W.SetAccent(c, alpha)
 		if typeof(c) == "Color3" then W.Accent = c end
@@ -2805,7 +3246,7 @@ local function CreateWindow(o)
 		end
 	end
 	function W.SetBarWidth(v)
-		W.BarW = math.clamp(math.floor((tonumber(v) or 6) + 0.5), 1, 25)
+		W.BarW = math.clamp(math.floor((tonumber(v) or 6) + 0.5), 3, 24)
 		for _, p in ipairs(W.Pages) do
 			p.LayoutColumns()
 			p.Update()
@@ -2866,6 +3307,7 @@ local function CreateWindow(o)
 		W.LogoSpec = NormalizeLogo(spec, W.Title)
 		W.BuildHeaderLogo()
 		W.WM.BuildLogo()
+		for _, fn in ipairs(W.LogoHooks) do SafeCall(fn) end
 	end)
 
 	Method(Window, "SetTheme", function(name) return W.SetTheme(name) end)
@@ -2924,12 +3366,15 @@ local function CreateWindow(o)
 	end)
 
 	Method(Window, "Notify", function(x) return Notify(W, x) end)
+	Method(Window, "ClosePopups", function() W.ClosePopup() end)
 
 	-- Конфиги
 	Method(Window, "GetConfig", function()
 		local data = {Flags = {}, Accent = ToHex(W.Accent), AccentAlpha = W.AccentAlpha}
 		for _, el in ipairs(W.Elements) do
-			if el.Flag and el.Get then data.Flags[el.Flag] = el.Get() end
+			if el.Flag and el.Get then
+				data.Flags[el.Flag] = el._serialize and el._serialize() or el.Get()
+			end
 		end
 		return data
 	end)
@@ -2939,7 +3384,11 @@ local function CreateWindow(o)
 		if c then W.SetAccent(c, data.AccentAlpha) end
 		for flag, v in pairs(data.Flags or {}) do
 			local el = Library.Options[flag]
-			if el and el.Set then pcall(el.Set, v) end
+			if el and el._deserialize then
+				pcall(el._deserialize, v)
+			elseif el and el.Set then
+				pcall(el.Set, v)
+			end
 		end
 		return true
 	end)
@@ -3054,10 +3503,10 @@ local function CreateWindow(o)
 		W.Gui:Destroy()
 		-- отпускаем все ссылки на инстансы и замыкания, чтобы GC собрал окно целиком
 		W.Listeners = {}
-		for _, t in ipairs({W.Elements, W.Pages, W.Tabs, W.HeaderButtons, W.AccentIcons, W.UnloadCallbacks, W.PopupConns}) do
+		for _, t in ipairs({W.Elements, W.Pages, W.Tabs, W.HeaderButtons, W.AccentIcons, W.UnloadCallbacks, W.Popups, W.LogoHooks}) do
 			table.clear(t)
 		end
-		W.ActivePopup, W.PopupOwner, W.CurrentPage, W.ConfigPage = nil, nil, nil, nil
+		W.CurrentPage, W.ConfigPage = nil, nil
 		if Library.ActiveWindow == Window then Library.ActiveWindow = nil end
 	end)
 	Window.Unload = Window.Destroy
