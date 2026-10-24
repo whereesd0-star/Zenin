@@ -2,7 +2,7 @@
 
 UI Library для Roblox, повторяющая эталонное меню Zenin Internal: тёмное окно 480×338 с шапкой, нижними вкладками, под-вкладками в шапке, своей полосой прокрутки, ватермарком и анимациями.
 
-**Элементы:** `Toggle`, `Slider`, `Dropdown`, `MultiDropdown`, `Button`.
+**Элементы:** `Toggle`, `Slider`, `Dropdown`, `MultiDropdown`, `ColorPicker` (1–4 цвета), `Button` (обычная и карточка). У элементов может быть шестерёнка с панелью настроек.
 **Настройки (шестерёнка)** есть всегда: Theme, Accent Color, UI Scale, Scrollbar Size и ватермарк (Opacity, Show Icons, Details). Туда можно добавлять свои секции.
 
 ```lua
@@ -24,7 +24,7 @@ local Window = Library:CreateWindow({
     Accent = Color3.fromRGB(255, 89, 89),
     AccentAlpha = 1,
     Scale = 1,                      -- масштаб окна
-    ScrollbarSize = 6,              -- 1..25; блоки с элементами сужаются под толстую полосу
+    ScrollbarSize = 6,              -- 3..24; блоки сужаются под полосу только там, где она нужна
     MouseWheel = false,             -- true = листать колесом (в эталоне только полосой)
     ConfigFolder = nil,             -- nil = корень workspace экзекутора, "MyHub" = подпапка
     Configs = true,                 -- кнопка конфигов слева от шестерёнки (по желанию)
@@ -68,6 +68,7 @@ local Window = Library:CreateWindow({
 | `SetAccent(color, alpha)`, `GetAccent()` | акцент |
 | `SetScale(n, animate)`, `GetScale()` | размер меню |
 | `SetScrollbarSize(px)`, `SetMouseWheel(bool)` | прокрутка |
+| `ClosePopups()` | закрыть все открытые попапы и панели |
 | `Show()`, `Hide()`, `Toggle()`, `SetVisible(b)`, `IsVisible()` | видимость |
 | `SetToggleKey(KeyCode)`, `GetToggleKey()`, `SetPosition(UDim2)`, `Center()` | клавиша, позиция, вернуть в центр |
 | `AddHeaderButton({Icon, Callback})` | иконка-кнопка в шапке слева от шестерёнки (`:SetIcon`, `:SetCallback`, `:Destroy`) |
@@ -157,10 +158,48 @@ local md = Section:AddMultiDropdown({
 ```
 Список не закрывается при выборе; выбранные пункты подсвечены акцентом и отмечены галочкой.
 
-### Button
-Карточка, как бывшая кнопка Telegram: иконка, заголовок, необязательное описание и кнопка действия справа.
+### ColorPicker
 ```lua
-local b = Section:AddButton({
+local c = Section:AddColorPicker({Name = "Color", Default = Color3.new(1, 1, 1), Alpha = 1, Flag = "Color",
+    Callback = function(color, alpha) end})
+
+-- до 4 цветов в одной строке (например, градиент); значение — таблица
+local g = Section:AddColorPicker({
+    Name = "Gradient",
+    Default = {Color3.fromRGB(255, 89, 89), Color3.fromRGB(89, 120, 255)},
+    Alpha = {1, 0.5},
+    Flag = "Gradient",
+    Callback = function(colors, alphas) end,
+})
+-- Set(color | {colors}, alpha | {alphas}, silent), SetColor(i, color, alpha), GetColor(i), GetAlpha(i), GetCount()
+```
+В конфиге цвета хранятся hex-строками.
+
+### Настройки элемента (шестерёнка)
+У `Toggle`, `Slider`, `Dropdown`, `MultiDropdown` и `ColorPicker` есть `AddSettings`. Рядом с элементом появляется кнопка-шестерёнка; по нажатию открывается панель (как «Font Settings» в оригинале), в которую добавляются любые элементы.
+```lua
+local font = Section:AddDropdown({Name = "Font", Options = {"Small", "Default"}})
+local fs = font:AddSettings({Title = "Font Settings"})
+fs:AddSlider({Name = "Size", Min = 6, Max = 20, Default = 10, Suffix = "px", Flag = "FontSize"})
+fs:AddToggle({Name = "Outline", Flag = "FontOutline"})
+fs:AddDropdown({Name = "Style", Options = {"Regular", "Bold"}})
+-- fs:Open(), fs:Close(), fs:Toggle(), fs:IsOpen(), fs:SetTitle(text)
+```
+Дропдаун или пикер цвета внутри панели открываются поверх неё, панель при этом не закрывается. Клик мимо закрывает панель.
+
+### Button
+Обычная кнопка во всю ширину (как «Reset to Defaults» в оригинале):
+```lua
+Section:AddButton({Name = "Reset to Defaults", Callback = function()
+    return "Done"   -- строка на 1.2 сек появится на кнопке
+end})
+-- Fire(), Flash(text, seconds), SetText(text), SetCallback(fn)
+```
+
+### CardButton
+Карточка, как бывшая кнопка Telegram: иконка, заголовок, необязательное описание и кнопка действия справа. `AddButton` с `Icon`, `Description` или `ButtonText` тоже создаёт карточку.
+```lua
+local b = Section:AddCardButton({
     Name = "Telegram", Description = "наш канал",
     Icon = "send", IconColor = nil,   -- по умолчанию цвет акцента
     ButtonText = "Open",
